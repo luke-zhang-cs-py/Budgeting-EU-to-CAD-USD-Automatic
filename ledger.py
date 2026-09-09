@@ -73,7 +73,7 @@ def fingerprint(spent_on, amount_eur, description):
     smaller and much more visible error than silently doubling February.
     """
     key = f"{spent_on}|{int(amount_eur)}|{normalise(description)}"
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:db.DIGEST_CHARS]
 
 
 def as_date(value):
@@ -114,7 +114,7 @@ def add(connection, spent_on, description, amount_eur, category=None,
         # A real second identical purchase. Salted so it gets its own row
         # without weakening the constraint for everything else.
         mark = hashlib.sha256((mark + str(dt.datetime.now())
-                               ).encode("utf-8")).hexdigest()[:32]
+                               ).encode("utf-8")).hexdigest()[:db.DIGEST_CHARS]
 
     existing = connection.execute(
         "SELECT id FROM transactions WHERE fingerprint = ?", (mark,)).fetchone()

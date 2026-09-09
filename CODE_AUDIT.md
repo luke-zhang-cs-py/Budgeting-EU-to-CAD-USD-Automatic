@@ -274,3 +274,121 @@ saying "keep this in one module" is advice; a failing test is a decision.
 
 Structural tests are the only kind that hold a refactoring in place. A comment
 saying "keep this in one module" is advice; a failing test is a decision.
+
+---
+
+# Second pass
+
+Run over the code added for automatic import -- `sources.py`, `fxcost.py`,
+`layout.py`, the migration and the UI -- roughly 400 statements written in one
+sitting and unaudited. Same checklist.
+
+**375 tests, 100% of all 1,117 statements**, flake8 clean, maintainability A
+across twelve modules.
+
+| Module | Cover | | Module | Cover |
+|---|---|---|---|---|
+| `app.py` | **100%** | | `layout.py` | **100%** |
+| `budgets.py` | **100%** | | `ledger.py` | **100%** |
+| `db.py` | **100%** | | `money.py` | **100%** |
+| `export.py` | **100%** | | `paths.py` | **100%** |
+| `fxcost.py` | **100%** | | `sources.py` | **100%** |
+| `fxrates.py` | **100%** | | `importers.py` | **100%** |
+
+## Bloaters — the largest method in the project
+
+`infer_mapping` measured **D(22)**, the only D the project has had. It did four
+jobs: classify every column, choose the date, choose the description, and
+decide which of three amount shapes the file uses. Split into `_classify` and
+`_amount_shape`, and it is now below the reporting threshold with `_classify`
+at C(11).
+
+## Bloaters — divergent change in importers.py
+
+`importers.py` had grown to **291 statements over thirteen functions** with the
+lowest maintainability index in the project (41.42), and it held two unrelated
+jobs. Nine functions answered *what shape is this file*; four answered *turn
+these rows into transactions*. Those change for different reasons: a new bank
+format touches the first, a change to how a transaction is built touches the
+second.
+
+Extracted as `layout.py`. `importers.py` is down to 127 statements and its
+index back to 53.89; `layout.py` is 60.10.
+
+## Couplers — a message chain
+
+`sources.py` called **`importers.ledger.apply_rules(connection)`** -- reaching
+through one module to get at another. Both names are public, so this is not the
+private-access smell; the fault is the route. It would have broken silently the
+day `importers` stopped needing `ledger`, with nothing in `sources` to explain
+why. It imports `ledger` directly now.
+
+## Magic Number — a length written out three times
+
+The digest truncation `[:32]` appeared in `ledger.fingerprint` twice and
+`sources.digest` once. Both feed UNIQUE identity columns declared in the same
+schema, so it is one decision in two modules. Named `db.DIGEST_CHARS`.
+
+Also named, in the extracted module: `SAMPLE_ROWS`, `TYPE_AGREEMENT` and
+`BALANCE_DENSITY`, which were the bare `40`, `0.8` and `0.9` deciding how a
+column is classified.
+
+## Dispensables — a comment that had become untrue
+
+`db.py` opened "Three tables and no ORM" while declaring four; the `imports`
+table was added without the sentence being updated. The spam classifier in this
+family had the identical fault -- a comment describing a fix as finished while
+half of it was outstanding -- and it is worse than no comment, because it
+answers a reader's question wrongly. A test now derives the count from the
+schema.
+
+## Abusers — a route group that became a grab-bag
+
+`_settings` measured C(15) after the source routes were added, holding budgets,
+rules, rates and the folder. Split into `_budgets`, `_rules_and_rates` and
+`_watching`; eight groups now, none above C(11).
+
+## Unit-level bug — a test that could not fail
+
+The worst finding of this pass, and mine.
+
+`test_nothing_reaches_through_one_module_to_another` was written through a
+shell heredoc, which turned the `` in its regex into a literal **backspace
+byte (0x08)**. The pattern could never match, so the test passed
+unconditionally -- a guard against message chains that would not have noticed
+one.
+
+It survived a negative control because I checked a regex I had retyped by hand
+rather than the one in the file. The real check is to run the actual test
+function against a planted fault, and it now does: the planted chain is caught,
+and the code as it stands passes.
+
+This is the second one this month. The spam classifier had
+`web.clf.TEST_SIZE == allinone.TEST_SIZE`, which compares a value to itself
+because `web.clf` *is* that module. Same category, different mechanism, and the
+lesson is the same: **a structural test is worthless until it has been seen to
+fail.** Every guard added in either pass has now been run against the code it
+was written to reject.
+
+## Maintenance classification
+
+**Corrective** — the vacuous guard, and the `db.py` docstring.
+
+**Adaptive** — the whole reason this code exists. Canada has no live
+open-banking API: the Consumer-Driven Banking Act received Royal Assent in
+March 2026 and CIBC is a mandatory participant, but Phase 1 read access has no
+operational date. Adapting meant a watched folder rather than an API, and
+handling CIBC's headerless export by inferring layout from values because that
+one bank produces at least three shapes.
+
+**Perfective** — `layout.py`, the two function splits, the route regrouping,
+`DIGEST_CHARS`, the three named thresholds. No behaviour changed: all 369 tests
+passed before each step and after it.
+
+**Preventive** — five new structural guards, each run against a planted fault
+rather than assumed:
+`test_nothing_reaches_through_one_module_to_another`,
+`test_the_digest_length_is_named_in_one_place`,
+`test_working_out_a_file_shape_is_not_in_the_importer`,
+`test_the_route_groups_stay_small`,
+`test_the_schema_docstring_counts_its_own_tables`.

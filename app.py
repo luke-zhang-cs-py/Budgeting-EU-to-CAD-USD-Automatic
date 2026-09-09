@@ -71,7 +71,8 @@ def create_app(directory=None):
     app.config["WALLET_DIR"] = directory
 
     context = Context(directory)
-    for register in (_pages, _reading, _writing, _importing, _settings,
+    for register in (_pages, _reading, _writing, _importing,
+                     _budgets, _rules_and_rates, _watching,
                      _exporting):
         register(app, context)
     return app
@@ -208,7 +209,7 @@ def _importing(app, ctx):
         return jsonify(out)
 
 
-def _settings(app, ctx):
+def _budgets(app, ctx):
     @app.route("/api/budget", methods=["POST"])
     def set_budget():
         body = request.get_json(silent=True) or request.form
@@ -226,6 +227,8 @@ def _settings(app, ctx):
                 return jsonify({"error": str(bad)}), 400
             return jsonify({"budgets": budgets.status(conn, ctx.month())})
 
+
+def _rules_and_rates(app, ctx):
     @app.route("/api/rules", methods=["GET", "POST"])
     def manage_rules():
         with ctx.connect() as conn:
@@ -247,6 +250,18 @@ def _settings(app, ctx):
             ledger.remove_rule(conn, rule_id)
             return jsonify({"rules": ledger.rules(conn)})
 
+    @app.route("/api/rates/refresh", methods=["POST"])
+    def refresh_rates():
+        """Returns 200 with ok=false on a network failure rather than 5xx.
+        A failed refresh is a normal outcome offline, not a server error."""
+        ok = fxrates.refresh(ctx.directory)
+        return jsonify({"ok": ok, "rates": fxrates.coverage(ctx.directory)})
+
+
+def _watching(app, ctx):
+    """The watched folder. Its own group rather than another branch of
+    _settings, which had become a grab-bag of budgets, rules, rates and
+    sources and measured cyclomatic complexity 15 for it."""
     @app.route("/api/sources", methods=["GET"])
     def sources_status():
         """Where the watched folder is, and what the last sweep did."""
@@ -265,13 +280,6 @@ def _settings(app, ctx):
             return jsonify({"results": results,
                             "inbox": sources.status(ctx.directory),
                             "history": sources.history(conn)})
-
-    @app.route("/api/rates/refresh", methods=["POST"])
-    def refresh_rates():
-        """Returns 200 with ok=false on a network failure rather than 5xx.
-        A failed refresh is a normal outcome offline, not a server error."""
-        ok = fxrates.refresh(ctx.directory)
-        return jsonify({"ok": ok, "rates": fxrates.coverage(ctx.directory)})
 
 
 def _exporting(app, ctx):

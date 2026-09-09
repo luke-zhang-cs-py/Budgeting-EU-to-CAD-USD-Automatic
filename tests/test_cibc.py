@@ -28,6 +28,7 @@ import db          # noqa: E402
 import fxcost      # noqa: E402
 import fxrates     # noqa: E402
 import importers   # noqa: E402
+import layout      # noqa: E402
 import ledger      # noqa: E402
 import money       # noqa: E402
 
@@ -133,7 +134,7 @@ def test_a_description_containing_a_figure_is_still_the_description():
     ("2026-09-02", False),
 ])
 def test_what_counts_as_a_figure(cell, is_amount):
-    assert importers._is_amount(cell) is is_amount
+    assert layout.is_amount(cell) is is_amount
 
 
 def test_a_headerless_file_of_one_row_still_works():
@@ -394,7 +395,7 @@ def test_an_all_blank_column_is_ignored_entirely():
 
 
 def test_inferring_from_no_rows_at_all_returns_an_empty_mapping():
-    assert importers.infer_mapping(["column 1"], []) == {
+    assert layout.infer(["column 1"], []) == {
         "date": None, "description": None, "amount": None,
         "amount_out": None, "amount_in": None, "currency": None,
         "category": None}
@@ -412,8 +413,8 @@ def test_a_single_sparse_amount_column_is_taken_as_money_out():
 
 def test_a_row_whose_date_cell_is_blank_is_not_taken_as_the_header():
     """_looks_like_data skips empty cells before deciding."""
-    assert importers._looks_like_data(["", "  ", "2026-09-02"]) is True
-    assert importers._looks_like_data(["", "  ", ""]) is False
+    assert layout.looks_like_data(["", "  ", "2026-09-02"]) is True
+    assert layout.looks_like_data(["", "  ", ""]) is False
 
 
 def test_the_migration_skips_a_table_that_does_not_exist_yet(tmp_path,
@@ -437,8 +438,28 @@ def test_a_numeric_column_with_some_junk_still_reports_its_signs():
     rows = [[f"2026-09-0{n}", "SHOP", v, "X"] for n, v in
             enumerate(["-10.00", "-20.00", "-30.00", "-40.00", "n/a"], start=1)]
     headers = ["column 1", "column 2", "column 3", "column 4"]
-    assert importers._has_negatives(rows, headers, "column 3") is True
+    assert layout._has_negatives(rows, headers, "column 3") is True
 
     positive = [[f"2026-09-0{n}", "SHOP", v, "X"] for n, v in
                 enumerate(["10.00", "20.00", "n/a", "40.00"], start=1)]
-    assert importers._has_negatives(positive, headers, "column 3") is False
+    assert layout._has_negatives(positive, headers, "column 3") is False
+
+
+def test_a_headerless_file_with_no_figures_at_all_chooses_no_amount():
+    """A date and a description and nothing numeric. There is no amount to
+    guess at, so the mapping says so and preview refuses the rows rather than
+    inventing zeroes."""
+    text = ("2026-09-02,REWE SAGT DANKE\n"
+            "2026-09-04,DB VERTRIEB GMBH\n")
+    sniffed = importers.sniff(text)
+    mapping = sniffed["mapping"]
+    assert mapping["date"] == "column 1"
+    assert mapping["description"] == "column 2"
+    assert mapping["amount"] is None
+    assert mapping["amount_out"] is None
+    assert mapping["amount_in"] is None
+    assert mapping["expenses_positive"] is False
+
+    out = importers.preview(sniffed)
+    assert out["readable"] == 0
+    assert "no amount column" in out["problems"][0]["why"]

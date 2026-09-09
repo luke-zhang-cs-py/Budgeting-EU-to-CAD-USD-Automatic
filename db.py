@@ -3,9 +3,9 @@ db.py
 -----
 SQLite schema and connections.
 
-Three tables and no ORM. The data is a list of purchases, a cap per category
-and a list of keyword rules; an ORM would be more machinery than the problem
-has.
+Four tables and no ORM: purchases, a cap per category, keyword rules, and the
+files the watched folder has already read. An ORM would be more machinery than
+the problem has.
 
 The important part of the schema is the UNIQUE constraint on
 transactions.fingerprint. Re-importing a statement that overlaps one already
@@ -23,6 +23,14 @@ import threading
 import paths
 
 DB_NAME = "wallet.db"
+
+# How much of a sha256 to keep for the identity columns -- transactions.
+# fingerprint and imports.digest. 32 hex characters is 128 bits, which is far
+# more than enough to identify a purchase or a file and short enough to read
+# in a query. Named here because both those columns are declared in this
+# schema, and because the length was written out as a bare [:32] in three
+# places across two modules.
+DIGEST_CHARS = 32
 
 # Money never crosses this boundary as a float; see money.py. Amounts are
 # INTEGER cents, and SQLite stores them exactly.

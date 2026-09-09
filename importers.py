@@ -23,24 +23,11 @@ things are guessed carefully because getting them wrong is silent:
 """
 import csv
 import io
-import re
 
 import fxcost
+import layout
 import ledger
 import money
-
-# Header names seen in the wild, lowercased. Order matters: the first match
-# wins, so the more specific names come first.
-DATE_NAMES = ("completed date", "date completed", "transaction date",
-              "booking date", "value date", "date", "buchungstag", "datum")
-DESCRIPTION_NAMES = ("description", "merchant", "payee", "reference", "details",
-                     "narrative", "name", "beneficiary", "buchungstext",
-                     "verwendungszweck")
-AMOUNT_NAMES = ("amount", "value", "betrag", "gross")
-OUT_NAMES = ("paid out", "money out", "debit", "withdrawal", "soll", "expense")
-IN_NAMES = ("paid in", "money in", "credit", "deposit", "haben", "income")
-CURRENCY_NAMES = ("currency", "ccy", "waehrung", "währung")
-CATEGORY_NAMES = ("category", "type", "kategorie")
 
 # Rows with more than this share unreadable are treated as the wrong mapping
 # rather than a bad file, because that is nearly always what it is.
@@ -93,15 +80,15 @@ def sniff(text):
     # is the one that prompted this. Treating its first line as a header
     # consumed a real purchase and then left nothing recognisable to map, so
     # the whole file was unimportable.
-    if _looks_like_data(rows[0]):
+    if layout.looks_like_data(rows[0]):
         headers = [f"column {n}" for n in range(1, len(rows[0]) + 1)]
         body = rows
-        mapping = infer_mapping(headers, body)
+        mapping = layout.infer(headers, body)
         headerless = True
     else:
         headers = [cell.strip() for cell in rows[0]]
         body = rows[1:]
-        mapping = guess_mapping(headers)
+        mapping = layout.by_header(headers)
         headerless = False
 
     return {
@@ -112,190 +99,6 @@ def sniff(text):
         "headerless": headerless,
         "sample": body[:PREVIEW_ROWS],
     }
-
-
-def _looks_like_data(cells):
-    """Is this row a transaction rather than a set of column names.
-
-    Decided by content, not by a bank name: a header cell is a word, and a
-    data row carries a readable date. Asking "does any cell parse as a date"
-    is the one test that separates them without a list of formats to maintain
-    -- no bank calls a column "2026-09-02".
-    """
-    for cell in cells:
-        text = (cell or "").strip()
-        if not text:
-            continue
-        try:
-            ledger.as_date(text)
-            return True
-        except ValueError:
-            continue
-    return False
-
-
-def infer_mapping(headers, rows):
-    """Which positional column is which, worked out from the values.
-
-    Written this way rather than as a per-bank profile because CIBC alone
-    exports at least three shapes -- credit card, chequing and business
-    differ in whether money out and money in are split, and in whether a
-    running balance is carried. A profile would have to guess which one you
-    downloaded; the values do not have to guess.
-
-    Every guess is still shown in the preview and can be corrected there,
-    which matters more for a headerless file than a labelled one.
-    """
-    sample = rows[:40]
-    if not sample:
-        return dict.fromkeys(("date", "description", "amount", "amount_out",
-                              "amount_in", "currency", "category"), None)
-
-    dates, texts, numbers = [], [], []
-    for index, name in enumerate(headers):
-        values = [(row[index] or "").strip() if index < len(row) else ""
-                  for row in sample]
-        filled = [v for v in values if v]
-        if not filled:
-            continue
-        if _mostly(filled, _is_date):
-            dates.append((index, name))
-        elif _mostly(filled, _is_amount):
-            numbers.append((index, name, len(filled) / len(values)))
-        else:
-            texts.append((index, name, sum(len(v) for v in filled) / len(filled)))
-
-    mapping = dict.fromkeys(("date", "description", "amount", "amount_out",
-                             "amount_in", "currency", "category"), None)
-    if dates:
-        mapping["date"] = dates[0][1]
-    if texts:
-        # The widest text column. A masked card number is short and repeats;
-        # a merchant name is long and varies, and it is the one a reader needs
-        # in order to recognise the purchase.
-        mapping["description"] = max(texts, key=lambda t: t[2])[1]
-
-    # A balance column is filled on every row and moves in both directions;
-    # money out and money in are each blank whenever the other is used. That
-    # sparseness is what tells them apart from a balance.
-    sparse = [n for n in numbers if n[2] < 0.9]
-    if len(sparse) >= 2:
-        # Out before in: statements put money leaving first, and the debit
-        # column is the fuller one on a spending account.
-        first, second = sparse[0], sparse[1]
-        mapping["amount_out"] = first[1]
-        mapping["amount_in"] = second[1]
-        mapping["expenses_positive"] = True
-        return mapping
-
-    signed = [n for n in numbers if _has_negatives(sample, headers, n[1])]
-    if signed:
-        mapping["amount"] = signed[0][1]
-    elif sparse:
-        mapping["amount_out"] = sparse[0][1]
-        mapping["expenses_positive"] = True
-    elif numbers:
-        # One dense, all-positive numeric column. Taken as the amount rather
-        # than as a balance, because refusing to guess leaves the file
-        # unimportable and the preview is there to be corrected.
-        mapping["amount"] = numbers[0][1]
-        mapping["expenses_positive"] = True
-    mapping.setdefault("expenses_positive", False)
-    return mapping
-
-
-def _mostly(values, test, share=0.8):
-    return sum(1 for v in values if test(v)) >= max(1, int(len(values) * share))
-
-
-def _is_date(text):
-    try:
-        ledger.as_date(text)
-        return True
-    except ValueError:
-        return False
-
-
-# An amount cell, allowing a currency symbol or a trailing three-letter code
-# but no other letters: "85.94", "-1.234,56", "€52.30", "52.30 EUR".
-_AMOUNT_CELL = re.compile(r"""^[-+(]?\s*        # optional sign or bracket
-                              [^\w\s]{0,3}\s*   # optional currency symbol
-                              \d[\d.,\s]*       # the figure
-                              \)?\s*            # optional closing bracket
-                              (?:[A-Za-z]{3})?$ # optional currency code
-                           """, re.VERBOSE)
-
-
-def _is_amount(text):
-    """Does this cell look like a figure, rather than merely contain one.
-
-    money.parse is deliberately permissive -- it strips everything that is not
-    a digit or a separator, which is right for reading a cell somebody has
-    already told us is an amount. It is wrong for *deciding* which column is
-    the amount: "REWE SAGT DANKE 52.30 EUR" parses to 52.30, so a description
-    column full of foreign-currency notes was classified as numeric and the
-    file then had no description column at all.
-
-    Requiring the cell to be substantially a number, not text containing one,
-    is the distinction.
-    """
-    if not _AMOUNT_CELL.match(text.strip()):
-        return False
-    # Nothing that matches the pattern fails money.parse -- fuzzed over 200k
-    # matching cells -- so there is no failure branch left to guard.
-    money.parse(text)
-    return True
-
-
-def _has_negatives(rows, headers, name):
-    index = headers.index(name)
-    for row in rows:
-        text = (row[index] or "").strip() if index < len(row) else ""
-        if not text:
-            continue
-        try:
-            if money.parse(text) < 0:
-                return True
-        except money.MoneyError:
-            continue
-    return False
-
-
-def _find(headers, candidates):
-    """The first header matching any candidate, exact before substring."""
-    lowered = [h.strip().lower() for h in headers]
-    for want in candidates:
-        if want in lowered:
-            return headers[lowered.index(want)]
-    for want in candidates:
-        for index, have in enumerate(lowered):
-            if want in have:
-                return headers[index]
-    return None
-
-
-def guess_mapping(headers):
-    """A best guess at which column is which.
-
-    Returned rather than applied, so the preview can show what it would do.
-    A guess that silently mis-imports 400 rows is worse than no guess.
-    """
-    out_column = _find(headers, OUT_NAMES)
-    in_column = _find(headers, IN_NAMES)
-    mapping = {
-        "date": _find(headers, DATE_NAMES),
-        "description": _find(headers, DESCRIPTION_NAMES),
-        "amount": _find(headers, AMOUNT_NAMES),
-        "amount_out": out_column,
-        "amount_in": in_column,
-        "currency": _find(headers, CURRENCY_NAMES),
-        "category": _find(headers, CATEGORY_NAMES),
-        # Separate in/out columns carry the sign in the column choice, so the
-        # figures inside them are unsigned by definition.
-        "expenses_positive": bool(out_column and not _find(headers,
-                                                           AMOUNT_NAMES)),
-    }
-    return mapping
 
 
 def _amount_of(row, mapping):

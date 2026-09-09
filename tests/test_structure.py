@@ -22,9 +22,11 @@ import fxrates    # noqa: E402
 import importers  # noqa: E402
 import ledger     # noqa: E402
 import money      # noqa: E402
+import layout     # noqa: E402
 import paths      # noqa: E402
 
-MODULES = (money, paths, db, fxrates, ledger, importers, budgets, export)
+MODULES = (money, paths, db, fxrates, layout, ledger, importers,
+           budgets, export)
 
 
 def _code_of(module):
@@ -245,3 +247,67 @@ def test_the_checkbox_flag_is_read_one_way():
     assert web._flag(None) is False
     assert web._flag("") is False
     assert web._flag("off") is False
+
+
+# ------------------------------------------------- the second audit's guards
+
+def test_nothing_reaches_through_one_module_to_another():
+    """sources called importers.ledger.apply_rules -- a chain that would have
+    broken silently the day importers stopped needing ledger. Distinct from
+    the private-name test above: these names are all public, and the fault is
+    the route taken to them."""
+    import sources
+    names = [m.__name__ for m in MODULES] + ["sources", "fxcost"]
+    for module in list(MODULES) + [sources]:
+        code = _code_of(module)
+        for other in names:
+            if other == module.__name__:
+                continue
+            found = re.findall(rf"\b{other}\.[a-z_]+\.[a-z_]+\(", code)
+            assert not found, f"{module.__name__} chains through {other}: {found}"
+
+
+def test_the_digest_length_is_named_in_one_place():
+    """It was a bare [:32] in three places across two modules, and both are
+    UNIQUE identity columns in the same schema."""
+    import sources
+    assert db.DIGEST_CHARS == 32
+    for module in (ledger, sources):
+        assert "[:32]" not in _code_of(module), module.__name__
+    assert len(ledger.fingerprint("2026-09-02", -100, "X")) == db.DIGEST_CHARS
+    assert len(sources.digest(b"x")) == db.DIGEST_CHARS
+
+
+def test_working_out_a_file_shape_is_not_in_the_importer():
+    """importers held both jobs -- thirteen functions, 291 statements, the
+    lowest maintainability index in the project. A new bank format touches
+    the shape detection; a change to how a transaction is built touches the
+    reader. Divergent change, so they are separate modules."""
+    reader = _code_of(importers)
+    for moved in ("def infer_mapping", "def guess_mapping", "def _is_amount",
+                  "def _is_date", "def _looks_like_data", "def _find",
+                  "DATE_NAMES =", "AMOUNT_NAMES ="):
+        assert moved not in reader, f"importers still defines {moved}"
+    assert "layout." in reader, "the importer should be delegating"
+
+
+def test_the_route_groups_stay_small():
+    """_settings became a grab-bag of budgets, rules, rates and sources and
+    measured cyclomatic complexity 15 for it."""
+    import app as web
+    groups = [name for name, obj in inspect.getmembers(web, inspect.isfunction)
+              if name.startswith("_") and "app" in
+              inspect.signature(obj).parameters]
+    assert len(groups) >= 7, f"routes are not grouped finely enough: {groups}"
+    assert not hasattr(web, "_settings"), "the grab-bag group is back"
+
+
+def test_the_schema_docstring_counts_its_own_tables():
+    """It said "three tables" while declaring four. A comment that answers a
+    reader's question wrongly is worse than no comment -- the spam classifier
+    in this family had one describing a fix as finished when half of it was
+    still outstanding."""
+    declared = len(re.findall(r"CREATE TABLE", db.SCHEMA))
+    words = {3: "three", 4: "four", 5: "five", 6: "six"}
+    assert words[declared] in inspect.getdoc(db).lower(), (
+        f"the docstring does not say {words[declared]} for {declared} tables")

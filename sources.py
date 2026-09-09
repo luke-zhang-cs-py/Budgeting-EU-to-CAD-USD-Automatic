@@ -32,6 +32,7 @@ import threading
 
 import db
 import importers
+import ledger
 import paths
 
 # Where to watch. Defaults inside the data directory so a fresh clone has
@@ -69,7 +70,7 @@ def digest(raw):
     By contents so that renaming or re-downloading the same export is free,
     and so that a file edited in place is correctly seen as new.
     """
-    return hashlib.sha256(raw).hexdigest()[:32]
+    return hashlib.sha256(raw).hexdigest()[:db.DIGEST_CHARS]
 
 
 def already_imported(connection, mark):
@@ -149,7 +150,10 @@ def scan(connection, directory=None, use_file_categories=False):
         outcome = importers.load(connection, previewed,
                                  source=f"inbox:{name}",
                                  use_file_categories=use_file_categories)
-        outcome["recategorised"] = importers.ledger.apply_rules(connection)
+        # ledger directly, not importers.ledger. Reaching through one
+        # module to get at another is a chain that breaks silently the
+        # day importers stops needing ledger.
+        outcome["recategorised"] = ledger.apply_rules(connection)
         record(connection, name, mark, outcome)
         results.append({
             "file": name, "status": "imported",
