@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as web   # noqa: E402
 import db           # noqa: E402
+import fetch      # noqa: E402
 import fxrates      # noqa: E402
 
 
@@ -266,7 +267,7 @@ def test_the_file_is_reported_to_reconcile_with_the_ledger(client):
 def test_a_failed_rate_refresh_is_reported_not_a_server_error(client,
                                                               monkeypatch):
     """Offline is a normal state, not a 500."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: None)
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: None)
     reply = client.post("/api/rates/refresh")
     assert reply.status_code == 200
     assert reply.get_json()["ok"] is False

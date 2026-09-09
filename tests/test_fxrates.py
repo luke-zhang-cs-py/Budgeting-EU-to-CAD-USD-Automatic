@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import fetch      # noqa: E402
 import fxrates  # noqa: E402
 import money    # noqa: E402
 
@@ -73,7 +74,7 @@ def test_a_failed_refresh_returns_false_rather_than_raising(tmp_path,
                                                             monkeypatch):
     """The app stays useful offline against the last cache, so a network blip
     must not take the page down."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: None)
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: None)
     assert fxrates.refresh(str(tmp_path)) is False
 
 
@@ -211,7 +212,7 @@ def test_a_refresh_writes_a_readable_cache(tmp_path, monkeypatch):
                          "Date, USD, CAD, CYP,\n"
                          "2026-04-07, 1.1700, 1.6100, N/A,\n"
                          "2026-04-02, 1.1614, 1.6033, N/A,\n")
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: payload.getvalue())
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: payload.getvalue())
 
     assert fxrates.refresh(str(tmp_path)) is True
     value, used = fxrates.rate(dt.date(2026, 4, 5), "CAD", str(tmp_path))

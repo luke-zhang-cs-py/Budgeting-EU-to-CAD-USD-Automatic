@@ -26,13 +26,11 @@ import csv
 import datetime as dt
 import io
 import os
-import subprocess
 import threading
-import urllib.error
-import urllib.request
 import zipfile
 from decimal import Decimal
 
+import fetch
 import money
 import paths
 
@@ -72,28 +70,6 @@ def cache_path(directory=None):
     captured their paths at import and a use() that consequently did nothing.
     """
     return os.path.join(paths.data_dir(directory), CACHE_NAME)
-
-
-def _download(url, timeout=120):
-    """The zip bytes, or None.
-
-    urllib first, curl second -- not a preference. On some machines urllib
-    cannot verify the chain because a local inspecting CA is not strict-OpenSSL
-    clean, and certifi does not help since the interception is what fails.
-    curl verifies differently and succeeds. Same reasoning as the transit
-    project's realtime fetch.
-    """
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            return response.read()
-    except (urllib.error.URLError, OSError, ValueError):
-        pass
-    try:
-        done = subprocess.run(["curl", "-sL", "--max-time", str(timeout), url],
-                              capture_output=True, timeout=timeout + 20)
-        return done.stdout if done.returncode == 0 and done.stdout else None
-    except (OSError, subprocess.SubprocessError):
-        return None
 
 
 def _parse_history(raw):
@@ -146,7 +122,7 @@ def refresh(directory=None, timeout=120):
     is useful offline against whatever was last cached, and a failed refresh
     should not take the page down.
     """
-    raw = _download(HISTORY_URL, timeout)
+    raw = fetch.get(HISTORY_URL, timeout)
     if not raw:
         return False
     try:

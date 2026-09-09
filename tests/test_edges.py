@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import fetch      # noqa: E402
 import fxrates   # noqa: E402
 import ledger    # noqa: E402
 import money     # noqa: E402
@@ -38,7 +39,7 @@ def zipped(csv_text, name="eurofxref-hist.csv"):
 
 
 # ==========================================================================
-#  _download -- urllib, then curl, then give up
+#  fetch.get -- urllib, then curl, then give up
 # ==========================================================================
 
 def test_urllib_is_tried_first_and_its_bytes_are_used(monkeypatch):
@@ -52,12 +53,12 @@ def test_urllib_is_tried_first_and_its_bytes_are_used(monkeypatch):
         def __exit__(self, *_):
             return False
 
-    monkeypatch.setattr(fxrates.urllib.request, "urlopen",
+    monkeypatch.setattr(fetch.urllib.request, "urlopen",
                         lambda *a, **k: Response())
     called = []
-    monkeypatch.setattr(fxrates.subprocess, "run",
+    monkeypatch.setattr(fetch.subprocess, "run",
                         lambda *a, **k: called.append(1))
-    assert fxrates._download("https://example.invalid/x.zip") == b"payload"
+    assert fetch.get("https://example.invalid/x.zip") == b"payload"
     assert not called, "curl was run even though urllib worked"
 
 
@@ -71,9 +72,9 @@ def test_curl_is_the_fallback_when_urllib_cannot_verify_the_chain(monkeypatch):
         returncode = 0
         stdout = b"from curl"
 
-    monkeypatch.setattr(fxrates.urllib.request, "urlopen", refuse)
-    monkeypatch.setattr(fxrates.subprocess, "run", lambda *a, **k: Done())
-    assert fxrates._download("https://example.invalid/x.zip") == b"from curl"
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(fetch.subprocess, "run", lambda *a, **k: Done())
+    assert fetch.get("https://example.invalid/x.zip") == b"from curl"
 
 
 @pytest.mark.parametrize("returncode,stdout", [(1, b""), (0, b""), (7, b"x")])
@@ -88,9 +89,9 @@ def test_a_curl_that_fails_or_returns_nothing_is_not_a_download(monkeypatch,
 
     Done.returncode = returncode
     Done.stdout = stdout
-    monkeypatch.setattr(fxrates.urllib.request, "urlopen", refuse)
-    monkeypatch.setattr(fxrates.subprocess, "run", lambda *a, **k: Done())
-    assert fxrates._download("https://example.invalid/x.zip") is None
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(fetch.subprocess, "run", lambda *a, **k: Done())
+    assert fetch.get("https://example.invalid/x.zip") is None
 
 
 def test_curl_missing_entirely_is_not_a_crash(monkeypatch):
@@ -99,9 +100,9 @@ def test_curl_missing_entirely_is_not_a_crash(monkeypatch):
     def refuse(*_a, **_k):
         raise OSError("nope")
 
-    monkeypatch.setattr(fxrates.urllib.request, "urlopen", refuse)
-    monkeypatch.setattr(fxrates.subprocess, "run", refuse)
-    assert fxrates._download("https://example.invalid/x.zip") is None
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(fetch.subprocess, "run", refuse)
+    assert fetch.get("https://example.invalid/x.zip") is None
 
 
 def test_a_curl_timeout_is_not_a_crash(monkeypatch):
@@ -111,9 +112,9 @@ def test_a_curl_timeout_is_not_a_crash(monkeypatch):
     def expire(*_a, **_k):
         raise subprocess.TimeoutExpired("curl", 1)
 
-    monkeypatch.setattr(fxrates.urllib.request, "urlopen", refuse)
-    monkeypatch.setattr(fxrates.subprocess, "run", expire)
-    assert fxrates._download("https://example.invalid/x.zip") is None
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(fetch.subprocess, "run", expire)
+    assert fetch.get("https://example.invalid/x.zip") is None
 
 
 # ==========================================================================
@@ -123,7 +124,7 @@ def test_a_curl_timeout_is_not_a_crash(monkeypatch):
 def test_a_file_missing_a_currency_column_is_refused(monkeypatch, tmp_path):
     """If the ECB ever drops CAD, silently producing a USD-only cache would
     leave half the app blank with no explanation."""
-    monkeypatch.setattr(fxrates, "_download",
+    monkeypatch.setattr(fetch, "get",
                         lambda *a, **k: zipped("Date, USD,\n2026-09-08, 1.16,\n"))
     assert fxrates.refresh(str(tmp_path)) is False
 
@@ -131,7 +132,7 @@ def test_a_file_missing_a_currency_column_is_refused(monkeypatch, tmp_path):
 def test_rows_with_no_date_are_skipped(monkeypatch, tmp_path):
     """The file ends with a trailing blank line, and has a trailing comma on
     every row, so an empty first cell is normal rather than corrupt."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n"
         "2026-09-08, 1.1614, 1.6033,\n"
         ", , ,\n"
@@ -141,7 +142,7 @@ def test_rows_with_no_date_are_skipped(monkeypatch, tmp_path):
 
 
 def test_a_row_with_an_unreadable_date_is_skipped(monkeypatch, tmp_path):
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n"
         "not-a-date, 1.16, 1.60,\n"
         "2026-09-08, 1.1614, 1.6033,\n"))
@@ -155,7 +156,7 @@ def test_na_and_blank_values_are_skipped_not_stored_as_zero(monkeypatch,
                                                             tmp_path):
     """The file writes "N/A" for a currency that did not exist yet. Stored as
     zero it would convert every purchase to nothing."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n"
         "2026-09-08, 1.1614, N/A,\n"
         "2026-09-07, , 1.6033,\n"
@@ -177,7 +178,7 @@ def test_na_and_blank_values_are_skipped_not_stored_as_zero(monkeypatch,
 
 
 def test_a_value_that_is_not_a_number_is_skipped(monkeypatch, tmp_path):
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n"
         "2026-09-08, 1.1614, not-a-rate,\n"
         "2026-09-07, 1.1600, 1.6000,\n"))
@@ -188,7 +189,7 @@ def test_a_value_that_is_not_a_number_is_skipped(monkeypatch, tmp_path):
 
 def test_a_short_row_does_not_raise_an_index_error(monkeypatch, tmp_path):
     """A truncated line in the middle of the file."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n"
         "2026-09-08, 1.1614\n"
         "2026-09-07, 1.1600, 1.6000,\n"))
@@ -203,7 +204,7 @@ def test_a_short_row_does_not_raise_an_index_error(monkeypatch, tmp_path):
 def test_something_that_is_not_a_zip_is_reported_not_raised(monkeypatch,
                                                             tmp_path):
     """An error page served with a 200, which is what a captive portal does."""
-    monkeypatch.setattr(fxrates, "_download",
+    monkeypatch.setattr(fetch, "get",
                         lambda *a, **k: b"<html>not a zip</html>")
     assert fxrates.refresh(str(tmp_path)) is False
     assert fxrates.available(str(tmp_path)) is False
@@ -212,12 +213,12 @@ def test_something_that_is_not_a_zip_is_reported_not_raised(monkeypatch,
 def test_a_zip_with_no_usable_rows_does_not_replace_the_cache(monkeypatch,
                                                               tmp_path):
     """Otherwise a bad refresh wipes a good cache and the app goes blank."""
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\n2026-09-08, 1.1614, 1.6033,\n"))
     assert fxrates.refresh(str(tmp_path)) is True
     good = fxrates.coverage(str(tmp_path))["days"]
 
-    monkeypatch.setattr(fxrates, "_download", lambda *a, **k: zipped(
+    monkeypatch.setattr(fetch, "get", lambda *a, **k: zipped(
         "Date, USD, CAD,\nnot-a-date, , ,\n"))
     assert fxrates.refresh(str(tmp_path)) is False
     assert fxrates.coverage(str(tmp_path))["days"] == good
