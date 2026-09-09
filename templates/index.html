@@ -42,6 +42,10 @@
     <span class="label" id="leftLabel">Left to spend</span>
     <strong class="figure" id="remaining">—</strong>
   </div>
+  <div class="total" id="fxTile" hidden>
+    <span class="label" id="fxLabel">Card conversion cost</span>
+    <strong class="figure" id="fxCost">—</strong>
+  </div>
 </section>
 
 <p class="notice" id="notice" hidden></p>
@@ -102,6 +106,26 @@
   <p class="hint">Type it as a positive number — spending is taken as money out.</p>
 </section>
 
+<!-- --------------------------------------------------- automatic import -->
+<section class="card">
+  <div class="cardHead">
+    <h2>Automatic import</h2>
+    <span class="hint" id="inboxState"></span>
+  </div>
+  <p class="hint">
+    Drop a bank export into this folder and it imports itself. Point it at a
+    folder your phone already syncs — iCloud Drive, OneDrive, Dropbox —
+    and set <code>WALLET_INBOX</code> to move it. Nothing leaves this machine,
+    and files are never moved or deleted.
+  </p>
+  <p class="run"><code id="inboxFolder">—</code></p>
+  <div class="row">
+    <button type="button" id="scanNow">Scan now</button>
+    <span class="hint" id="inboxWaiting"></span>
+  </div>
+  <ul class="rules" id="inboxHistory"></ul>
+</section>
+
 <!-- ------------------------------------------------------------- import -->
 <section class="card">
   <h2>Import a statement</h2>
@@ -151,7 +175,7 @@
       <tr>
         <th>Date</th><th>Description</th><th>Category</th>
         <th class="num">EUR</th><th class="num">CAD</th><th class="num">USD</th>
-        <th>Rate used</th><th></th>
+        <th>Rate used</th><th class="num">FX cost</th><th></th>
       </tr>
     </thead>
     <tbody id="txBody"></tbody>

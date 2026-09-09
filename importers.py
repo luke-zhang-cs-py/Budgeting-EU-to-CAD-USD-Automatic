@@ -23,7 +23,9 @@ things are guessed carefully because getting them wrong is silent:
 """
 import csv
 import io
+import re
 
+import fxcost
 import ledger
 import money
 
@@ -87,14 +89,176 @@ def sniff(text):
     if not rows:
         raise ImportProblem("the file has no rows")
 
-    headers = [cell.strip() for cell in rows[0]]
+    # Some banks ship no header row at all -- CIBC's "Download Transactions"
+    # is the one that prompted this. Treating its first line as a header
+    # consumed a real purchase and then left nothing recognisable to map, so
+    # the whole file was unimportable.
+    if _looks_like_data(rows[0]):
+        headers = [f"column {n}" for n in range(1, len(rows[0]) + 1)]
+        body = rows
+        mapping = infer_mapping(headers, body)
+        headerless = True
+    else:
+        headers = [cell.strip() for cell in rows[0]]
+        body = rows[1:]
+        mapping = guess_mapping(headers)
+        headerless = False
+
     return {
         "delimiter": delimiter,
         "headers": headers,
-        "rows": rows[1:],
-        "mapping": guess_mapping(headers),
-        "sample": rows[1:PREVIEW_ROWS + 1],
+        "rows": body,
+        "mapping": mapping,
+        "headerless": headerless,
+        "sample": body[:PREVIEW_ROWS],
     }
+
+
+def _looks_like_data(cells):
+    """Is this row a transaction rather than a set of column names.
+
+    Decided by content, not by a bank name: a header cell is a word, and a
+    data row carries a readable date. Asking "does any cell parse as a date"
+    is the one test that separates them without a list of formats to maintain
+    -- no bank calls a column "2026-09-02".
+    """
+    for cell in cells:
+        text = (cell or "").strip()
+        if not text:
+            continue
+        try:
+            ledger.as_date(text)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def infer_mapping(headers, rows):
+    """Which positional column is which, worked out from the values.
+
+    Written this way rather than as a per-bank profile because CIBC alone
+    exports at least three shapes -- credit card, chequing and business
+    differ in whether money out and money in are split, and in whether a
+    running balance is carried. A profile would have to guess which one you
+    downloaded; the values do not have to guess.
+
+    Every guess is still shown in the preview and can be corrected there,
+    which matters more for a headerless file than a labelled one.
+    """
+    sample = rows[:40]
+    if not sample:
+        return dict.fromkeys(("date", "description", "amount", "amount_out",
+                              "amount_in", "currency", "category"), None)
+
+    dates, texts, numbers = [], [], []
+    for index, name in enumerate(headers):
+        values = [(row[index] or "").strip() if index < len(row) else ""
+                  for row in sample]
+        filled = [v for v in values if v]
+        if not filled:
+            continue
+        if _mostly(filled, _is_date):
+            dates.append((index, name))
+        elif _mostly(filled, _is_amount):
+            numbers.append((index, name, len(filled) / len(values)))
+        else:
+            texts.append((index, name, sum(len(v) for v in filled) / len(filled)))
+
+    mapping = dict.fromkeys(("date", "description", "amount", "amount_out",
+                             "amount_in", "currency", "category"), None)
+    if dates:
+        mapping["date"] = dates[0][1]
+    if texts:
+        # The widest text column. A masked card number is short and repeats;
+        # a merchant name is long and varies, and it is the one a reader needs
+        # in order to recognise the purchase.
+        mapping["description"] = max(texts, key=lambda t: t[2])[1]
+
+    # A balance column is filled on every row and moves in both directions;
+    # money out and money in are each blank whenever the other is used. That
+    # sparseness is what tells them apart from a balance.
+    sparse = [n for n in numbers if n[2] < 0.9]
+    if len(sparse) >= 2:
+        # Out before in: statements put money leaving first, and the debit
+        # column is the fuller one on a spending account.
+        first, second = sparse[0], sparse[1]
+        mapping["amount_out"] = first[1]
+        mapping["amount_in"] = second[1]
+        mapping["expenses_positive"] = True
+        return mapping
+
+    signed = [n for n in numbers if _has_negatives(sample, headers, n[1])]
+    if signed:
+        mapping["amount"] = signed[0][1]
+    elif sparse:
+        mapping["amount_out"] = sparse[0][1]
+        mapping["expenses_positive"] = True
+    elif numbers:
+        # One dense, all-positive numeric column. Taken as the amount rather
+        # than as a balance, because refusing to guess leaves the file
+        # unimportable and the preview is there to be corrected.
+        mapping["amount"] = numbers[0][1]
+        mapping["expenses_positive"] = True
+    mapping.setdefault("expenses_positive", False)
+    return mapping
+
+
+def _mostly(values, test, share=0.8):
+    return sum(1 for v in values if test(v)) >= max(1, int(len(values) * share))
+
+
+def _is_date(text):
+    try:
+        ledger.as_date(text)
+        return True
+    except ValueError:
+        return False
+
+
+# An amount cell, allowing a currency symbol or a trailing three-letter code
+# but no other letters: "85.94", "-1.234,56", "€52.30", "52.30 EUR".
+_AMOUNT_CELL = re.compile(r"""^[-+(]?\s*        # optional sign or bracket
+                              [^\w\s]{0,3}\s*   # optional currency symbol
+                              \d[\d.,\s]*       # the figure
+                              \)?\s*            # optional closing bracket
+                              (?:[A-Za-z]{3})?$ # optional currency code
+                           """, re.VERBOSE)
+
+
+def _is_amount(text):
+    """Does this cell look like a figure, rather than merely contain one.
+
+    money.parse is deliberately permissive -- it strips everything that is not
+    a digit or a separator, which is right for reading a cell somebody has
+    already told us is an amount. It is wrong for *deciding* which column is
+    the amount: "REWE SAGT DANKE 52.30 EUR" parses to 52.30, so a description
+    column full of foreign-currency notes was classified as numeric and the
+    file then had no description column at all.
+
+    Requiring the cell to be substantially a number, not text containing one,
+    is the distinction.
+    """
+    if not _AMOUNT_CELL.match(text.strip()):
+        return False
+    # Nothing that matches the pattern fails money.parse -- fuzzed over 200k
+    # matching cells -- so there is no failure branch left to guard.
+    money.parse(text)
+    return True
+
+
+def _has_negatives(rows, headers, name):
+    index = headers.index(name)
+    for row in rows:
+        text = (row[index] or "").strip() if index < len(row) else ""
+        if not text:
+            continue
+        try:
+            if money.parse(text) < 0:
+                return True
+        except money.MoneyError:
+            continue
+    return False
 
 
 def _find(headers, candidates):
@@ -228,15 +392,37 @@ def _row(row, mapping, number):
     if not what:
         raise ValueError("no description")
 
+    amount = _amount_of(row, mapping)
+    charged_minor = charged_currency = None
+
+    billed = money.BASE
     currency_column = mapping.get("currency")
     if currency_column:
-        found = (row.get(currency_column) or "").strip().upper()
-        if found and found != money.BASE:
-            # Refused, not converted. This app takes euros in; a 200 SEK lunch
-            # booked as EUR 200 is a twenty-fold error that looks plausible.
-            raise ValueError(f"not in {money.BASE} (row says {found})")
+        billed = (row.get(currency_column) or "").strip().upper() or money.BASE
+    elif mapping.get("billed_currency"):
+        # A headerless card export carries no currency column, so the
+        # importer can be told what the card bills in.
+        billed = mapping["billed_currency"].strip().upper()
 
-    amount = _amount_of(row, mapping)
+    if billed != money.BASE:
+        # The row is billed in something else -- a Canadian card converts a
+        # euro purchase to CAD at the Visa rate plus 2.5% before you ever see
+        # it. If the original euro figure is recoverable from the description,
+        # keep the euro amount as the transaction and the billed figure beside
+        # it, which is what makes the conversion cost measurable.
+        #
+        # If it is not recoverable the row is still refused, for the reason it
+        # always was: a 200 SEK lunch booked as EUR 200 is a twenty-fold error
+        # that looks entirely plausible, and guessing is worse than declining.
+        original = fxcost.foreign_amount(what, billed)
+        if not original or original[1] != money.BASE:
+            raise ValueError(f"not in {money.BASE} (row says {billed}) and no "
+                             f"{money.BASE} amount in the description")
+        base_cents, _code = original
+        charged_minor = abs(amount)
+        charged_currency = billed
+        amount = -base_cents if amount < 0 else base_cents
+
     category = None
     if mapping.get("category"):
         category = (row.get(mapping["category"]) or "").strip() or None
@@ -248,6 +434,8 @@ def _row(row, mapping, number):
         "amount_eur": amount,
         "amount_text": money.format(amount, "EUR"),
         "category": category,
+        "charged_minor": charged_minor,
+        "charged_currency": charged_currency,
     }
 
 
@@ -270,7 +458,9 @@ def load(connection, previewed, source="import", use_file_categories=False):
         try:
             _id, how = ledger.add(connection, entry["spent_on"],
                                   entry["description"], entry["amount_eur"],
-                                  category=category, source=source)
+                                  category=category, source=source,
+                                  charged_minor=entry.get("charged_minor"),
+                                  charged_currency=entry.get("charged_currency"))
         except (ValueError, money.MoneyError) as bad:
             failed.append({"row": entry["row"], "why": str(bad)})
             continue

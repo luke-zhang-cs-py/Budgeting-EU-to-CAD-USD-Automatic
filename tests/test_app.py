@@ -325,3 +325,31 @@ def test_a_negative_cap_is_refused_by_the_api(client):
     reply = post(client, "/api/budget", category="Groceries", cap="-100")
     assert reply.status_code == 400
     assert "negative" in reply.get_json()["error"]
+
+
+# --------------------------------------------------------- the watched folder
+
+def test_the_sources_endpoint_reports_the_folder(client):
+    body = client.get("/api/sources").get_json()
+    assert body["inbox"]["folder"].endswith("inbox")
+    assert body["inbox"]["watching"] is False
+    assert body["history"] == []
+
+
+def test_scanning_on_demand_imports_what_is_waiting(client, tmp_path):
+    """The button beside the folder, for when you do not want to wait for
+    the timer."""
+    import sources
+    inbox = sources.inbox_dir(str(tmp_path))
+    os.makedirs(inbox, exist_ok=True)
+    with open(os.path.join(inbox, "cibc.csv"), "w", encoding="utf-8") as handle:
+        handle.write("Date,Description,Amount,Currency\n"
+                     "2026-02-02,REWE SAGT DANKE,-52.30,EUR\n")
+
+    reply = client.post("/api/sources/scan", data={},
+                        content_type="multipart/form-data")
+    assert reply.status_code == 200
+    body = reply.get_json()
+    assert body["results"][0]["added"] == 1
+    assert body["history"][0]["filename"] == "cibc.csv"
+    assert len(client.get("/api/transactions").get_json()["transactions"]) == 1

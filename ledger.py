@@ -17,6 +17,7 @@ import hashlib
 import re
 
 import db
+import fxcost
 import fxrates
 import money
 
@@ -94,7 +95,8 @@ def as_date(value):
 # ------------------------------------------------------------------ writing
 
 def add(connection, spent_on, description, amount_eur, category=None,
-        source="manual", force=False):
+        source="manual", force=False, charged_minor=None,
+        charged_currency=None):
     """Record one purchase. Returns (id, "added") or (existing_id, "duplicate").
 
     A duplicate is a normal outcome rather than an error: importing an
@@ -122,10 +124,13 @@ def add(connection, spent_on, description, amount_eur, category=None,
     category = category or categorise(connection, description)
     cursor = connection.execute(
         "INSERT INTO transactions (spent_on, description, merchant, "
-        "amount_eur, category, source, fingerprint, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "amount_eur, category, source, fingerprint, created_at, "
+        "charged_minor, charged_currency) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (on.isoformat(), description, merchant_of(description), amount,
-         category, source, mark, dt.datetime.now().isoformat(timespec="seconds")))
+         category, source, mark, dt.datetime.now().isoformat(timespec="seconds"),
+         int(charged_minor) if charged_minor else None,
+         (charged_currency or "").upper() or None))
     connection.commit()
     return cursor.lastrowid, "added"
 
@@ -220,8 +225,9 @@ def _converted(row, directory=None):
     out["rate_date"] = ""
     out["rate_lag_days"] = None
 
-    for currency, result in fxrates.convert_all(
-            row["amount_eur"], as_date(row["spent_on"]), directory).items():
+    rates = fxrates.convert_all(row["amount_eur"], as_date(row["spent_on"]),
+                                directory)
+    for currency, result in rates.items():
         key = currency.lower()
         out[f"amount_{key}"] = result["cents"]
         out[f"amount_{key}_text"] = money.format(result["cents"], currency)
@@ -231,6 +237,17 @@ def _converted(row, directory=None):
             out["rate_lag_days"] = result["lag_days"]
         elif result["why"]:
             out["rate_note"] = result["why"]
+
+    # What the card charged, against what the reference rate says it should
+    # have. Only for rows that were billed in something other than euros --
+    # which for a Canadian card in Europe is all of them, and for an ordinary
+    # euro purchase is none.
+    out["fx"] = None
+    billed_currency = out.get("charged_currency")
+    if out.get("charged_minor") and billed_currency in rates:
+        out["fx"] = fxcost.compare(out["charged_minor"], billed_currency,
+                                   row["amount_eur"],
+                                   rates[billed_currency]["rate"])
     return out
 
 

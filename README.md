@@ -25,17 +25,66 @@ app works offline.
 sandboxed on the device and have no export API. That is a real constraint, not
 a gap in this project, and anything claiming otherwise is scraping screenshots.
 
-So there are two honest routes in:
+So there are three honest routes in.
 
-1. **Import a CSV** exported from the bank or card sitting behind the wallet.
-   The importer does not assume a format — it sniffs the delimiter, guesses
-   which column is which from the header names, and shows you a preview to
-   correct before anything is saved. Revolut, Wise, N26, a UK
-   `Paid out`/`Paid in` statement and a German semicolon file with decimal
-   commas all import as-is.
-2. **Type it in.** One line for cash, or anything the export missed.
+**1. A watched folder — the automatic one.** Point `WALLET_INBOX` at a folder
+your phone already syncs (iCloud Drive, OneDrive, Dropbox), drop a bank export
+into it, and it imports itself within the minute. Nothing leaves your machine,
+there are no credentials, and no third party sees a transaction. Files are
+never moved or deleted.
+
+Two properties make that safe to leave running:
+
+- **A file is never imported twice.** Identity is a digest of the contents, so
+  renaming or re-syncing the same export is free.
+- **A wider re-export adds only its new rows.** Re-download from your bank
+  with a longer date range and the overlap is caught by the duplicate rule
+  that predates all of this. That is the whole reason unattended import is
+  safe.
+
+**2. Import a CSV by hand.** The importer assumes no format. It sniffs the
+delimiter, works out which column is which, and shows a preview to correct
+before anything is saved. Revolut, Wise, N26, a UK `Paid out`/`Paid in`
+statement, a German semicolon file with decimal commas, and **headerless
+exports like CIBC's** all import as they are — for a file with no header row
+the columns are inferred from the values, because CIBC alone produces at
+least three layouts and a per-bank profile would have to guess which one you
+downloaded.
+
+**3. Type it in.** One line for cash, or anything the export missed.
 
 `sample-statement.csv` is included so a fresh clone has something to try.
+
+### Why not a bank API
+
+There is no live one to use in Canada yet. The Consumer-Driven Banking Act
+received Royal Assent in March 2026 and CIBC is a mandatory participant, but
+Phase 1 read access has no operational date. Aggregators that reach Canadian
+banks either need a commercial agreement or log into your online banking on
+your behalf, which breaches the bank's own agreement and can void your
+fraud-liability protection. When the official API lands, it becomes another
+source; until then a folder is the honest answer.
+
+## What the conversion cost you
+
+A Canadian card used in Europe does not bill euros. CIBC converts at the Visa
+network rate and adds 2.5%, so its export shows CAD — already converted, at a
+rate you did not choose and were not told.
+
+Because the ECB rate is stored per transaction date, the comparison is free:
+
+```
+2026-09-02  REWE SAGT DANKE     €52.30
+            billed by the card  CA$85.94
+            at the ECB rate     CA$83.85
+            the conversion cost CA$ 2.09   (2.49%)
+```
+
+That works when the original euro figure is recoverable from the description,
+which card statements carry when they carry it at all. When it is not, the row
+is refused rather than guessed at — the rule that has always applied, because
+a 200 SEK lunch booked as EUR 200 is a twenty-fold error that looks entirely
+plausible.
 
 ## The part that is easy to get wrong
 
@@ -104,12 +153,19 @@ looks like an ordinary small purchase.
 | `GET /export/transactions.csv` | the file |
 | `GET /export/summary.csv` | budget vs actual |
 | `GET /api/reconciles` | does the file add up to the ledger |
+| `GET /api/sources` | where the watched folder is, and what it has imported |
+| `POST /api/sources/scan` | sweep the folder now rather than waiting |
 
 ## Your data
 
 `data/` — holding `wallet.db` with every purchase, and the rate cache — is
 gitignored, along with `*.db` and `*.csv`. Financial history does not belong
-in a repository. Set `WALLET_DATA` to move it elsewhere.
+in a repository. Set `WALLET_DATA` to move it elsewhere, and `WALLET_INBOX`
+to point the watched folder at your synced directory.
+
+This repository is public, so that ignore file is what stands between a real
+ledger and the internet. A feature that writes anything derived from a
+transaction needs a line in it, in the same commit.
 
 The server binds `127.0.0.1` with debug off. Going wider is deliberate:
 `HOST=0.0.0.0`. The sibling app in this family bound every interface with the
@@ -123,7 +179,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-204 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
+369 tests, 100% coverage. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
 one thing that will confuse you.
 
 ## License

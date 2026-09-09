@@ -65,6 +65,8 @@ function loadOverview() {
     drawRecurring(body.recurring);
     drawCategories(body.categories);
     drawRates(body.rates);
+    drawFx(body.fx);
+    drawInbox(body.inbox, null);
     updateDownloadLinks();
   });
 }
@@ -173,6 +175,66 @@ function drawCategories(categories) {
   }).join('');
 }
 
+/* What the card's own conversion cost, over the rows that had a foreign
+ * original. Hidden entirely when there are none -- a zero would imply the
+ * conversion was free rather than absent. */
+function drawFx(fx) {
+  var tile = el('fxTile');
+  if (!fx || !fx.available) { tile.hidden = true; return; }
+  tile.hidden = false;
+  el('fxCost').textContent = fx.cost_text;
+  el('fxLabel').textContent = 'Card conversion cost, ' + fx.percent + '%';
+  el('fxCost').className = 'figure over';
+  /* Says what it covers: the same figure means something different over
+   * three purchases than over forty. */
+  el('fxCost').title = fx.cost_text + ' on ' + fx.rows + ' of ' + fx.of +
+    ' rows — billed ' + fx.billed_text + ' against ' + fx.reference_text +
+    ' at the reference rate';
+}
+
+function drawInbox(inbox, results) {
+  if (!inbox) return;
+  el('inboxFolder').textContent = inbox.folder;
+  el('inboxState').textContent = inbox.watching
+    ? 'watching every ' + inbox.intervalSeconds + 's'
+    : (inbox.folderExists ? 'not watching — start the app to enable it'
+                          : 'folder does not exist yet');
+  el('inboxWaiting').textContent = inbox.waiting
+    ? inbox.waiting + ' file(s) waiting'
+    : 'nothing waiting';
+
+  var lines = (results || []).map(function (r) {
+    var what = r.status === 'imported'
+      ? (r.added + ' added, ' + r.duplicate + ' already known')
+      : (r.status + ': ' + (r.why || ''));
+    return '<li><span class="keyword">' + esc(r.file) + '</span>' +
+      '<span class="amount">' + esc(what) + '</span></li>';
+  });
+  if (lines.length) { el('inboxHistory').innerHTML = lines.join(''); }
+}
+
+function drawImportHistory(history) {
+  var box = el('inboxHistory');
+  if (!history || !history.length) {
+    box.innerHTML = '<li class="empty">Nothing imported from the folder yet.</li>';
+    return;
+  }
+  box.innerHTML = history.map(function (h) {
+    var what = h.unreadable && !h.added
+      ? 'could not be read'
+      : h.added + ' added, ' + h.duplicate + ' already known';
+    return '<li><span class="keyword">' + esc(h.filename) + '</span>' +
+      '<span class="amount">' + esc(what) + ' · ' + esc(h.at) + '</span></li>';
+  }).join('');
+}
+
+function loadInbox() {
+  return api('/api/sources').then(function (body) {
+    drawInbox(body.inbox, null);
+    drawImportHistory(body.history);
+  });
+}
+
 function drawRates(rates) {
   el('rateInfo').textContent = rates.available
     ? ('ECB rates: ' + rates.days + ' days, ' + rates.first + ' to ' + rates.last)
@@ -220,6 +282,11 @@ function drawTransactions(rows) {
       '<td class="num">' + esc(row.amount_cad_text || '—') + '</td>' +
       '<td class="num">' + esc(row.amount_usd_text || '—') + '</td>' +
       '<td class="rate">' + rate + '</td>' +
+      '<td class="num">' + (row.fx
+        ? '<span class="lag" title="' + esc('billed ' + row.fx.billed_text +
+            ', ' + row.fx.reference_text + ' at the reference rate') + '">' +
+          esc(row.fx.cost_text) + '</span>'
+        : '—') + '</td>' +
       '<td><button class="iconButton" data-delete="' + esc(row.id) +
         '" title="Delete">×</button></td>' +
       '</tr>';
@@ -258,7 +325,7 @@ function loadReconcile() {
 
 function refresh() {
   return loadOverview().then(loadTransactions).then(loadRules)
-    .then(loadReconcile);
+    .then(loadInbox).then(loadReconcile);
 }
 
 /* ----------------------------------------------------------------- rules */

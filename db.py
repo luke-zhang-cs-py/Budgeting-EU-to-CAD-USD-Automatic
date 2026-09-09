@@ -36,7 +36,17 @@ CREATE TABLE IF NOT EXISTS transactions (
     category     TEXT    NOT NULL DEFAULT 'Uncategorised',
     source       TEXT    NOT NULL DEFAULT 'manual',
     fingerprint  TEXT    NOT NULL UNIQUE,
-    created_at   TEXT    NOT NULL
+    created_at   TEXT    NOT NULL,
+
+    -- What the card actually billed, when that differs from the euro amount.
+    --
+    -- A Canadian card used in Europe does not charge you euros: CIBC converts
+    -- at the Visa rate and adds 2.5%, so its export shows CAD. Keeping the
+    -- billed figure beside the euro one is what lets the app say what the
+    -- conversion cost, rather than silently reporting one currency as the
+    -- other. Null for an ordinary euro purchase, which is most of them.
+    charged_minor    INTEGER,
+    charged_currency TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(spent_on);
@@ -51,6 +61,22 @@ CREATE TABLE IF NOT EXISTS rules (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     keyword  TEXT    NOT NULL UNIQUE,       -- matched case-insensitively
     category TEXT    NOT NULL
+);
+
+-- Files the watched folder has already read, identified by a digest of their
+-- contents rather than their name. UNIQUE for the same reason
+-- transactions.fingerprint is: unattended import re-reads the folder every
+-- minute, and "have I seen this" has to be settled by the database rather
+-- than by remembering. Renaming an export does not make it new; editing one
+-- does.
+CREATE TABLE IF NOT EXISTS imports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename    TEXT    NOT NULL,
+    digest      TEXT    NOT NULL UNIQUE,
+    added       INTEGER NOT NULL DEFAULT 0,
+    duplicate   INTEGER NOT NULL DEFAULT 0,
+    unreadable  INTEGER NOT NULL DEFAULT 0,
+    at          TEXT    NOT NULL
 );
 """
 
@@ -98,5 +124,33 @@ def connect(directory=None):
     connection.row_factory = sqlite3.Row
     with _lock:
         connection.executescript(SCHEMA)
+        _migrate(connection)
         connection.commit()
     return connection
+
+
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS does
+# nothing to a table that already exists, so a database created before these
+# were added would be missing them and every query naming one would fail.
+# Additive only: SQLite can add a nullable column in place, and nothing here
+# ever drops or rewrites a column, because the file holds the only copy of
+# somebody's spending history.
+LATER_COLUMNS = {
+    "transactions": (
+        ("charged_minor", "INTEGER"),
+        ("charged_currency", "TEXT"),
+    ),
+}
+
+
+def _migrate(connection):
+    """Add any column this version expects and the file does not have."""
+    for table, columns in LATER_COLUMNS.items():
+        have = {row["name"] for row in
+                connection.execute(f"PRAGMA table_info({table})")}
+        if not have:
+            continue                        # the table itself is new
+        for name, kind in columns:
+            if name not in have:
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {name} {kind}")

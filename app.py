@@ -23,10 +23,12 @@ from flask import Flask, Response, jsonify, render_template, request
 import budgets
 import db
 import export
+import fxcost
 import fxrates
 import importers
 import ledger
 import money
+import sources
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "5004"))
@@ -100,6 +102,11 @@ def _reading(app, ctx):
                           for m, t in ledger.monthly_totals(conn)],
                 "recurring": ledger.recurring(conn),
                 "rates": fxrates.coverage(ctx.directory),
+                # What the card's own conversion cost, over the rows that
+                # were billed in something other than euros.
+                "fx": fxcost.summarise(ledger.transactions(
+                    conn, month=month, directory=ctx.directory)),
+                "inbox": sources.status(ctx.directory),
             })
 
     @app.route("/api/transactions")
@@ -240,6 +247,25 @@ def _settings(app, ctx):
             ledger.remove_rule(conn, rule_id)
             return jsonify({"rules": ledger.rules(conn)})
 
+    @app.route("/api/sources", methods=["GET"])
+    def sources_status():
+        """Where the watched folder is, and what the last sweep did."""
+        with ctx.connect() as conn:
+            return jsonify({"inbox": sources.status(ctx.directory),
+                            "history": sources.history(conn)})
+
+    @app.route("/api/sources/scan", methods=["POST"])
+    def sources_scan():
+        """Sweep the folder now, rather than waiting for the timer."""
+        with ctx.connect() as conn:
+            results = sources.scan(
+                conn, ctx.directory,
+                use_file_categories=_flag(
+                    request.form.get("use_file_categories")))
+            return jsonify({"results": results,
+                            "inbox": sources.status(ctx.directory),
+                            "history": sources.history(conn)})
+
     @app.route("/api/rates/refresh", methods=["POST"])
     def refresh_rates():
         """Returns 200 with ok=false on a network failure rather than 5xx.
@@ -355,5 +381,17 @@ if __name__ == "__main__":
         print("fetching ECB rate history (one time, ~640 KB) ...")
         print("  ok" if fxrates.refresh() else
               "  failed -- the app still runs; use Refresh rates later")
+    # Watch the inbox folder. Started here rather than in create_app so that
+    # importing the module -- which every test does -- never spawns a thread
+    # that writes to a database.
+    folder = sources.inbox_dir()
+    os.makedirs(folder, exist_ok=True)
+    sources.start_watching()
+    print(f"Watching {folder} every {sources.INTERVAL_SECONDS}s")
+    print("  drop a bank export there and it imports itself")
+
     print(f"Wallet FX & Budget on http://{HOST}:{PORT}")
-    app.run(host=HOST, port=PORT, debug=DEBUG)
+    try:
+        app.run(host=HOST, port=PORT, debug=DEBUG)
+    finally:
+        sources.stop_watching()
