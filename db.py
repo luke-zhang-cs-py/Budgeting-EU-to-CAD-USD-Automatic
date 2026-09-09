@@ -19,6 +19,8 @@ import os
 import sqlite3
 import threading
 
+import paths
+
 DB_NAME = "wallet.db"
 
 # Money never crosses this boundary as a float; see money.py. Amounts are
@@ -56,19 +58,14 @@ UNCATEGORISED = "Uncategorised"
 _lock = threading.Lock()
 
 
-def data_dir(directory=None):
-    """Where the database and the rate cache live.
-
-    Resolved per call, never captured at import. WALLET_DATA moves both, which
-    is what lets a test run against a temporary directory without touching the
-    real ledger.
-    """
-    return directory or os.environ.get("WALLET_DATA") or \
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-
-
 def db_path(directory=None):
-    return os.path.join(data_dir(directory), DB_NAME)
+    """Where the database lives.
+
+    The directory decision belongs to paths, not here. This module resolved it
+    and so did fxrates, each reading WALLET_DATA for itself -- so nothing
+    forced the database and the rate cache to agree on a location.
+    """
+    return os.path.join(paths.data_dir(directory), DB_NAME)
 
 
 def connect(directory=None):

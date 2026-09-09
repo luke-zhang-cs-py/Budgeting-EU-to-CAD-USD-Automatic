@@ -41,12 +41,12 @@ def _plain(cents):
     Grouping is for reading on a page. In a CSV, "1,234.56" is two fields to
     anything that splits on commas, which is the one thing a CSV reader
     reliably does.
+
+    This used to do the arithmetic itself, with the minor-unit scale written
+    out as a literal 100 -- the same knowledge money.py already held as
+    MINOR_UNITS, in a second place that did not know about the first.
     """
-    if cents is None:
-        return ""
-    sign = "-" if cents < 0 else ""
-    whole, frac = divmod(abs(int(cents)), 100)
-    return f"{sign}{whole}.{frac:02d}"
+    return money.format(cents, symbol=False, grouping=False)
 
 
 def transactions_csv(connection, month=None, category=None, search=None,

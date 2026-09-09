@@ -129,17 +129,25 @@ def convert(cents, rate):
                                                 rounding=ROUND_HALF_UP))
 
 
-def format(cents, currency=BASE, symbol=True):
+def format(cents, currency=BASE, symbol=True, grouping=True):
     """For display and for the CSV. Always two decimals, never truncated.
 
     Negative amounts get a leading minus rather than parentheses, because the
     CSV is read by other programs more often than by accountants.
+
+    `grouping=False` drops the thousands separators, which is what a CSV needs:
+    "1,234.56" is two fields to anything that splits on commas, and splitting
+    on commas is the one thing a CSV reader reliably does. export.py had its
+    own copy of this arithmetic with the scale written out as a literal 100 --
+    the same knowledge in two places, one of which did not know that
+    MINOR_UNITS existed.
     """
     if cents is None:
         return ""
     sign = "-" if cents < 0 else ""
     whole, frac = divmod(abs(int(cents)), _SCALE)
-    body = f"{whole:,}.{frac:0{MINOR_UNITS}d}"
+    grouped = f"{whole:,}" if grouping else f"{whole}"
+    body = f"{grouped}.{frac:0{MINOR_UNITS}d}"
     if not symbol:
         return f"{sign}{body}"
     return f"{sign}{SYMBOLS.get(currency, currency + ' ')}{body}"

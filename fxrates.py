@@ -34,6 +34,7 @@ import zipfile
 from decimal import Decimal
 
 import money
+import paths
 
 HISTORY_URL = ("https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip")
 
@@ -70,9 +71,7 @@ def cache_path(directory=None):
     point at different directories. The face project had seven modules that
     captured their paths at import and a use() that consequently did nothing.
     """
-    base = directory or os.environ.get("WALLET_DATA") or \
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-    return os.path.join(base, CACHE_NAME)
+    return os.path.join(paths.data_dir(directory), CACHE_NAME)
 
 
 def _download(url, timeout=120):
@@ -256,6 +255,33 @@ def convert(cents, on, currency, directory=None):
     """(converted_cents, rate, rate_date). The one call the ledger needs."""
     value, used = rate(on, currency, directory)
     return money.convert(cents, value), value, used
+
+
+def convert_all(cents, on, directory=None):
+    """{currency: {"cents", "rate", "used", "lag_days", "why"}} for every target.
+
+    One conversion attempt per currency, with the failure handling in one
+    place. Both ledger and budgets had their own loop over TARGETS doing this,
+    and the two had already drifted: one caught (RateError, MoneyError) and the
+    other also caught ValueError, so the same bad date failed differently
+    depending on which screen you were looking at.
+
+    A currency that could not be converted comes back with cents None and a
+    reason, never a zero. Zero in a money column is indistinguishable from a
+    free purchase.
+    """
+    out = {}
+    for currency in money.TARGETS:
+        try:
+            cents_out, value, used = convert(cents, on, currency, directory)
+        except (RateError, money.MoneyError, ValueError) as problem:
+            out[currency] = {"cents": None, "rate": None, "used": None,
+                             "lag_days": None, "why": str(problem)}
+            continue
+        as_date = on.date() if isinstance(on, dt.datetime) else on
+        out[currency] = {"cents": cents_out, "rate": value, "used": used,
+                         "lag_days": (as_date - used).days, "why": ""}
+    return out
 
 
 def coverage(directory=None):

@@ -75,7 +75,7 @@ def fingerprint(spent_on, amount_eur, description):
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
-def _as_date(value):
+def as_date(value):
     """A date from whatever the importer produced. Raises on nonsense."""
     if isinstance(value, dt.datetime):
         return value.date()
@@ -101,7 +101,7 @@ def add(connection, spent_on, description, amount_eur, category=None,
     overlapping statement is the expected way to use this, and the useful
     answer is "40 added, 12 already known".
     """
-    on = _as_date(spent_on)
+    on = as_date(spent_on)
     amount = int(amount_eur)
     description = (description or "").strip()
     if not description:
@@ -216,25 +216,21 @@ def _converted(row, directory=None):
     out = dict(row)
     out["spent_on"] = row["spent_on"]
     out["amount_eur_text"] = money.format(row["amount_eur"], "EUR")
-    on = _as_date(row["spent_on"])
     out["rate_note"] = ""
-    for currency in money.TARGETS:
+    out["rate_date"] = ""
+    out["rate_lag_days"] = None
+
+    for currency, result in fxrates.convert_all(
+            row["amount_eur"], as_date(row["spent_on"]), directory).items():
         key = currency.lower()
-        try:
-            cents, rate, used = fxrates.convert(row["amount_eur"], on,
-                                                currency, directory)
-            out[f"amount_{key}"] = cents
-            out[f"amount_{key}_text"] = money.format(cents, currency)
-            out[f"rate_{key}"] = str(rate)
-            out["rate_date"] = used.isoformat()
-            out["rate_lag_days"] = (on - used).days
-        except (fxrates.RateError, money.MoneyError) as problem:
-            out[f"amount_{key}"] = None
-            out[f"amount_{key}_text"] = ""
-            out[f"rate_{key}"] = ""
-            out.setdefault("rate_date", "")
-            out.setdefault("rate_lag_days", None)
-            out["rate_note"] = str(problem)
+        out[f"amount_{key}"] = result["cents"]
+        out[f"amount_{key}_text"] = money.format(result["cents"], currency)
+        out[f"rate_{key}"] = str(result["rate"]) if result["rate"] else ""
+        if result["used"]:
+            out["rate_date"] = result["used"].isoformat()
+            out["rate_lag_days"] = result["lag_days"]
+        elif result["why"]:
+            out["rate_note"] = result["why"]
     return out
 
 

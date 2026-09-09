@@ -173,18 +173,12 @@ def _converted_total(spent, month, today=None, directory=None):
     """
     out = {"rate_date": ""}
     on = _last_day_seen(month, today)
-    for currency in money.TARGETS:
+    for currency, result in fxrates.convert_all(spent, on, directory).items():
         key = currency.lower()
-        try:
-            cents, _rate, used = fxrates.convert(spent, on, currency,
-                                                 directory)
-        except (fxrates.RateError, money.MoneyError, ValueError):
-            out[f"spent_{key}"] = None
-            out[f"spent_{key}_text"] = ""
-            continue
-        out[f"spent_{key}"] = cents
-        out[f"spent_{key}_text"] = money.format(cents, currency)
-        out["rate_date"] = used.isoformat()
+        out[f"spent_{key}"] = result["cents"]
+        out[f"spent_{key}_text"] = money.format(result["cents"], currency)
+        if result["used"]:
+            out["rate_date"] = result["used"].isoformat()
     return out
 
 

@@ -24,6 +24,7 @@ things are guessed carefully because getting them wrong is silent:
 import csv
 import io
 
+import ledger
 import money
 
 # Header names seen in the wild, lowercased. Order matters: the first match
@@ -217,12 +218,11 @@ def preview(sniffed, mapping=None, rows=PREVIEW_ROWS):
 
 def _row(row, mapping, number):
     """One parsed transaction, or an exception saying why not."""
-    import ledger
 
     when = (row.get(mapping["date"]) or "").strip()
     if not when:
         raise ValueError("no date")
-    on = ledger._as_date(when)
+    on = ledger.as_date(when)
 
     what = (row.get(mapping["description"]) or "").strip()
     if not what:
@@ -262,7 +262,6 @@ def load(connection, previewed, source="import", use_file_categories=False):
     rarely matches yours, and rules you wrote are a better guide than a
     category somebody else's algorithm assigned.
     """
-    import ledger
 
     added = duplicate = 0
     failed = []

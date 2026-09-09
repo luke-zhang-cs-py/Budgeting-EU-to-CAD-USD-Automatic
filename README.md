@@ -123,7 +123,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-188 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
+204 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
 one thing that will confuse you.
 
 ## License
