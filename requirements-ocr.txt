@@ -1,0 +1,27 @@
+# Optional: reading a purchase screenshot.
+#
+# Separate from requirements.txt on purpose. This is about 60 MB installed
+# (14 MB of ONNX models plus onnxruntime), and importing it costs a measured
+# 1.0s against 0.65s for the whole rest of the wallet -- a price everyone
+# would pay on every start, including the people who never upload a
+# screenshot and CI, which has no use for it.
+#
+# Without it the app runs exactly as before: the upload still stores the
+# image and you type the amount, and ocr.available() reports why.
+#
+#     pip install -r requirements-ocr.txt
+#
+# It is a *local* engine. No screenshot of what somebody bought is sent
+# anywhere, which is the whole reason a cloud OCR service was not used
+# instead -- a folder of pictures of your purchases is the most personal
+# thing this app holds.
+rapidocr-onnxruntime>=1.2,<2
+
+# Pulled in by the above, pinned below the next major so an engine rebuild is
+# a deliberate step rather than whatever resolved today. The face project in
+# this family had a bare >= let opencv jump a major version ahead of what had
+# been tested.
+onnxruntime>=1.17,<2
+
+# The screenshot is decoded before it reaches the engine.
+Pillow>=10.0,<13

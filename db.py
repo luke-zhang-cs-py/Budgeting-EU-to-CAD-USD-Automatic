@@ -3,9 +3,9 @@ db.py
 -----
 SQLite schema and connections.
 
-Four tables and no ORM: purchases, a cap per category, keyword rules, and the
-files the watched folder has already read. An ORM would be more machinery than
-the problem has.
+Six tables and no ORM: purchases, the cards that paid for them, a cap per
+category, keyword rules, savings goals, and the files the watched folder has
+already read. An ORM would be more machinery than the problem has.
 
 The important part of the schema is the UNIQUE constraint on
 transactions.fingerprint. Re-importing a statement that overlaps one already
@@ -63,15 +63,66 @@ CREATE TABLE IF NOT EXISTS transactions (
     -- description, and genuinely two to the bank -- which says so, with two
     -- different ids. Null for a CSV row and for manual entry, which is why
     -- the fingerprint has to stay.
-    fitid            TEXT UNIQUE
+    fitid            TEXT UNIQUE,
+
+    -- Which card paid. Null for cash and for anything imported before cards
+    -- existed, so every query joining it has to tolerate the null rather than
+    -- assume attribution.
+    --
+    -- This is what makes the foreign-transaction fee exact instead of assumed:
+    -- the fee is a property of the card, not of the purchase, and a euro
+    -- coffee costs 2.5% more on the CIBC Visa than on a euro account.
+    card_id          INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+
+    -- Filename of the screenshot this row was read from, inside the receipts
+    -- folder. The name only -- a stored absolute path breaks the day the data
+    -- directory moves, and WALLET_DATA exists precisely so it can.
+    receipt          TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(spent_on);
 CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
 
+-- The cards and accounts that pay for things.
+--
+-- fee_bp is the foreign-transaction fee in basis points -- 250 is CIBC's
+-- published 2.50%. An integer, because a fee held as 0.025 puts a float in
+-- the middle of a figure somebody is about to be charged, and every other
+-- amount in this schema is an integer for the same reason.
+--
+-- It is stored per card rather than as one setting because it genuinely
+-- differs: the same euro purchase costs 2.5% more on a CIBC Visa than on a
+-- euro account, and a card with no foreign fee is 0. Once statements have
+-- been imported the real figure is measurable -- see fxcost.compare, which
+-- put the measured markup at 2.39-2.49% against the published 2.5% -- so this
+-- is a default to be corrected, not a fact.
+CREATE TABLE IF NOT EXISTS cards (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL UNIQUE,
+    mask          TEXT    NOT NULL DEFAULT '',   -- last four digits
+    currency      TEXT    NOT NULL,              -- what it bills in
+    fee_bp        INTEGER NOT NULL DEFAULT 250 CHECK (fee_bp >= 0),
+    opening_minor INTEGER NOT NULL DEFAULT 0,
+    archived      INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS budgets (
     category   TEXT    PRIMARY KEY,
     cap_eur    INTEGER NOT NULL CHECK (cap_eur >= 0)
+);
+
+-- Something being saved for. Deliberately not a second ledger: a goal has a
+-- target and a date, and progress against it is derived from what was not
+-- spent, so there is no balance here to drift out of step with the
+-- transactions table.
+CREATE TABLE IF NOT EXISTS goals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL UNIQUE,
+    target_minor INTEGER NOT NULL CHECK (target_minor > 0),
+    currency     TEXT    NOT NULL DEFAULT 'EUR',
+    due_on       TEXT,                            -- ISO date, or null
+    created_at   TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS rules (
@@ -95,6 +146,14 @@ CREATE TABLE IF NOT EXISTS imports (
     unreadable  INTEGER NOT NULL DEFAULT 0,
     at          TEXT    NOT NULL
 );
+"""
+
+# Indexes on columns the migration adds, applied after it has run. Kept apart
+# from SCHEMA because executescript(SCHEMA) happens first, and an index naming
+# card_id cannot be created on a database whose transactions table predates
+# that column.
+LATER_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_tx_card ON transactions(card_id);
 """
 
 UNCATEGORISED = "Uncategorised"
@@ -142,6 +201,12 @@ def connect(directory=None):
     with _lock:
         connection.executescript(SCHEMA)
         _migrate(connection)
+        # After the migration, never inside SCHEMA. An index on a column that
+        # only the migration adds cannot be created before it runs, and
+        # putting idx_tx_card in SCHEMA made opening any pre-cards database
+        # fail outright with "no such column: card_id" -- the exact
+        # already-existing-table blind spot LATER_COLUMNS exists for.
+        connection.executescript(LATER_INDEXES)
         connection.commit()
     return connection
 
@@ -161,6 +226,12 @@ LATER_COLUMNS = {
         # above; migrated ones get the column and rely on the lookup in
         # ledger.add, which is where the check actually happens.
         ("fitid", "TEXT"),
+        # No REFERENCES here either, for the same ALTER limitation. New
+        # databases get the foreign key; migrated ones get a plain integer,
+        # and cards.remove clears it explicitly rather than trusting the
+        # database to have the constraint.
+        ("card_id", "INTEGER"),
+        ("receipt", "TEXT"),
     ),
 }
 

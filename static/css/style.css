@@ -243,3 +243,123 @@ button.ghost, .ghost.button {
   border-top: 1px solid var(--line);
   color: var(--ink-faint); font-family: var(--mono); font-size: var(--t-small);
 }
+
+/* ================================================== screenshots & finance */
+/* Added with the screenshot reader, the live rate, cards, subscriptions and
+ * goals. Reuses the tokens declared at the top of this file rather than
+ * introducing a second palette. */
+
+.actions { display: flex; gap: 8px; align-items: flex-end; }
+
+/* What the reader could not settle. Amber rather than red: nothing is wrong
+ * yet, there is just a question to answer before saving. Every line names
+ * the reason -- "the 7th of September or the 9th of July" is answerable and
+ * "check the date" is not. */
+.needs {
+  margin: 10px 0 0; padding: 9px 12px;
+  background: #2a2118; border: 1px solid var(--line); border-radius: 6px;
+  color: var(--close); font-size: var(--t-small);
+}
+.needs p { margin: 0 0 4px; }
+.needs p:last-child { margin-bottom: 0; }
+
+/* The uploaded screenshot, kept small: it is there to be glanced at while
+ * checking the figures, not to be looked at. */
+.shotImage {
+  display: block; margin-top: 12px; max-width: 260px; max-height: 340px;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+
+/* A button that reads as a link, for choosing one of the other figures the
+ * screenshot offered. */
+.linky {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--accent); font: inherit; text-decoration: underline;
+}
+.linky:hover { color: var(--ink); }
+
+/* ---------------------------------------------------------- the estimate */
+.estimate {
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.estimate .line {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 4px 0; font-size: var(--t-small); color: var(--ink-dim);
+}
+.estimate .line b {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.estimate .line.total {
+  border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px;
+  color: var(--ink);
+}
+.estimate .line.total b { font-size: var(--t-mid); }
+
+/* -------------------------------------------------- cards, subs and goals */
+/* One list shape for all three: a label and its detail on the left, a figure
+ * on the right, controls after it. */
+.cards, .movers {
+  list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px;
+}
+.cards li, .movers li, .rules li.subRow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 11px; font-size: var(--t-small);
+}
+.what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.when { color: var(--ink-faint); font-size: 10.5px; }
+.much {
+  text-align: right; font-family: var(--mono);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.much .when { display: block; font-family: var(--text); }
+.acts { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+/* The status glyph beside a subscription, so state is never colour alone. */
+.g { font-family: var(--mono); font-size: 10.5px; }
+.rules li.subRow.expected { border-color: var(--close); }
+.rules li.subRow.lapsed { opacity: 0.6; }
+.rise { color: var(--close); font-size: 10.5px; }
+
+/* A goal's progress. Same 6px bar as the budgets above, deliberately. */
+.meter {
+  height: 5px; margin-top: 4px; min-width: 120px;
+  background: var(--panel); border-radius: 3px; overflow: hidden;
+}
+.meter > span { display: block; height: 100%; background: var(--accent); }
+
+/* ------------------------------------------------------------- the movers */
+.movers .much.up { color: var(--over); }
+.movers .much.down { color: var(--fine); }
+.movers li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.movers .when { grid-column: 1; }
+.movers .much { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+
+.moverRows { margin-top: 12px; }
+.moverRows h3 {
+  margin: 0 0 8px; font-size: var(--t-small); font-weight: 600;
+  color: var(--ink-dim);
+}
+.moverRows table { width: 100%; border-collapse: collapse; }
+.moverRows td {
+  padding: 5px 8px; border-bottom: 1px solid var(--line);
+  font-size: var(--t-small);
+}
+.moverRows td.num {
+  text-align: right; font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The little month-by-month strip under a drilldown. Not .trend, which is a
+ * grid expecting .trendRow children. */
+.spark {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint);
+}
+.spark span {
+  padding: 2px 6px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 4px;
+}

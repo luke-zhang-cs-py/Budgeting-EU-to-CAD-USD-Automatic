@@ -15,15 +15,40 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-JS = os.path.join(ROOT, "static", "js", "app.js")
+# Every script the page loads, not just the first one. finance.js was added
+# with the screenshot reader and none of these guards applied to it, because
+# they all read app.js by name -- so it shipped a second money formatter and
+# a font size outside the type scale, both of which these tests exist to
+# catch. A guard that names one file stops guarding the moment a second
+# appears.
+SCRIPTS = ("app.js", "finance.js")
 CSS = os.path.join(ROOT, "static", "css", "style.css")
 HTML = os.path.join(ROOT, "templates", "index.html")
 
 
+def _script(name):
+    with open(os.path.join(ROOT, "static", "js", name),
+              encoding="utf-8") as handle:
+        return handle.read()
+
+
 @pytest.fixture(scope="module")
 def js():
-    with open(JS, encoding="utf-8") as handle:
-        return handle.read()
+    """Every script, concatenated, so a check cannot miss one of them."""
+    return "\n".join(_script(name) for name in SCRIPTS)
+
+
+def test_the_page_loads_every_script_these_guards_check():
+    """The other half of the fixture above. Concatenating the files is only
+    a guard if the list matches what the page actually loads -- otherwise a
+    third script is added, nobody updates SCRIPTS, and the checks silently
+    cover two thirds of the client."""
+    with open(HTML, encoding="utf-8") as handle:
+        html = handle.read()
+    loaded = set(re.findall(r"filename='js/([A-Za-z0-9_.-]+)'", html))
+    assert loaded == set(SCRIPTS), (
+        f"the page loads {sorted(loaded)} but the guards read "
+        f"{sorted(SCRIPTS)}")
 
 
 def test_an_escaping_helper_exists(js):
@@ -52,9 +77,13 @@ def test_untrusted_fields_are_never_interpolated_raw(js, field):
 def test_every_interpolated_value_in_a_template_string_is_escaped(js):
     """Every `+ something +` inside an HTML-building expression should be an
     esc() call, a number, or a computed style width."""
+    # Names holding a fragment that was already built and escaped. Composing
+    # two of those is safe, and escaping one a second time would double every
+    # ampersand in it -- which is why the list exists rather than a blanket
+    # "everything must be esc()".
     allowed = re.compile(
         r"\+\s*(esc\(|\(share|\(Math|width|options|pickers|flag|pace|lag|"
-        r"rate\b|picker|direction|query|month|search)")
+        r"rate\b|picker|direction|query|month|search|rowsHtml|sparkHtml)")
     for line in js.splitlines():
         stripped = line.strip()
         if "'<" not in stripped and '"<' not in stripped:
@@ -85,6 +114,13 @@ def test_the_stylesheet_has_one_type_scale():
     literals = re.findall(r"font-size:\s*(\d+(?:\.\d+)?)px", css)
     # One deliberate exception: the small uppercase tag.
     assert set(literals) <= {"10.5"}, f"hardcoded font sizes: {literals}"
+
+
+def test_there_is_exactly_one_escaper(js):
+    """finance.js reuses app.js's esc rather than declaring its own. Two
+    escapers means one of them eventually stops being the one that gets
+    fixed, and this family has already shipped a stored XSS hole once."""
+    assert js.count("function esc(") == 1
 
 
 def test_money_is_set_in_a_monospace_face():

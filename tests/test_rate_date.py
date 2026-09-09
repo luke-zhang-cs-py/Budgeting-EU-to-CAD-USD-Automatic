@@ -222,7 +222,7 @@ def test_the_longest_gap_in_the_series_is_crossed(wallet, viewed, expected):
 
 
 @pytest.mark.parametrize("viewed", ["2025-12-25", "2025-12-26", "2025-12-27",
-                                     "2025-12-28"])
+                                    "2025-12-28"])
 def test_the_christmas_gap_is_crossed(wallet, viewed):
     conn, tmp = wallet
     write_cache(tmp, ["2025-12-23", "2025-12-24"])

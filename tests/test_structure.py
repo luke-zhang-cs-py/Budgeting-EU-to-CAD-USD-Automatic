@@ -16,17 +16,32 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import budgets    # noqa: E402
+import cards      # noqa: E402
 import db         # noqa: E402
 import export     # noqa: E402
+import fetch      # noqa: E402
+import fxcost     # noqa: E402
+import fxlive     # noqa: E402
 import fxrates    # noqa: E402
+import goals      # noqa: E402
 import importers  # noqa: E402
 import ledger     # noqa: E402
 import money      # noqa: E402
 import layout     # noqa: E402
+import ocr        # noqa: E402
 import paths      # noqa: E402
+import receipts   # noqa: E402
+import trends     # noqa: E402
+import upcoming   # noqa: E402
 
-MODULES = (money, paths, db, fxrates, layout, ledger, importers,
-           budgets, export)
+# Every first-party module. A module left out of this tuple is one that none
+# of the guards below apply to, which is how a structural test quietly stops
+# covering the code it was written for -- so adding to it is part of adding a
+# module. The four feature modules and the three helpers were added at once
+# and the guards found real faults in them immediately.
+MODULES = (money, paths, fetch, ocr, db, fxrates, fxcost, fxlive, layout,
+           ledger, cards, receipts, importers, budgets, trends, upcoming,
+           goals, export)
 
 
 def _code_of(module):
@@ -191,23 +206,62 @@ def test_no_module_reaches_into_another_private_name():
             assert not found, f"{module.__name__} reaches into {other}: {found}"
 
 
+# Deferred imports that are allowed, by module and by what they import.
+#
+# One entry, and it is here rather than as a looser regex so the exception is
+# a recorded decision instead of a hole. `ocr` defers the OCR engine because
+# it is a large *optional* dependency: importing rapidocr_onnxruntime costs a
+# measured 1.00s, against 0.65s for the entire rest of the wallet, and it
+# would be paid on every app start and every test run by everyone -- including
+# the majority who never upload a screenshot, and CI, which does not install
+# it at all. Deferring is what lets ocr.available() answer "no" instead of the
+# module failing to import.
+DEFERRED_IMPORTS_ALLOWED = {"ocr": ("rapidocr_onnxruntime",)}
+
+
 def test_nothing_imports_inside_a_function():
     """Two functions in importers did `import ledger` locally, which looks
     like a circular-import workaround and was not one -- there is no cycle.
     A local import hides the dependency from anyone reading the imports."""
     for module in MODULES:
+        allowed = DEFERRED_IMPORTS_ALLOWED.get(module.__name__, ())
         for line in inspect.getsource(module).splitlines():
             if re.match(r"\s+(import|from)\s+[a-z_]", line):
-                assert "typing" in line, \
-                    f"{module.__name__} imports inside a function: {line.strip()}"
+                if "typing" in line or any(name in line for name in allowed):
+                    continue
+                raise AssertionError(
+                    f"{module.__name__} imports inside a function: "
+                    f"{line.strip()}")
+
+
+def test_the_deferred_import_allowance_is_not_a_blanket_one():
+    """The negative control for the exemption above.
+
+    An allowance is only worth having if it still refuses everything else, and
+    a list keyed by module name is the kind of thing that quietly grows. This
+    asserts the one entry covers one module and one package, so widening it
+    is a visible edit to a test rather than a line nobody notices.
+    """
+    assert list(DEFERRED_IMPORTS_ALLOWED) == ["ocr"]
+    assert DEFERRED_IMPORTS_ALLOWED["ocr"] == ("rapidocr_onnxruntime",)
+
+    # And that the guard would still catch an ordinary deferred import in the
+    # exempted module -- the exemption is per package, not per file.
+    line = "    import ledger"
+    allowed = DEFERRED_IMPORTS_ALLOWED["ocr"]
+    assert not any(name in line for name in allowed), (
+        "the allowance would let ocr defer any import at all")
 
 
 def test_the_module_layers_do_not_cycle():
     """money < paths < db/fxrates < ledger < importers/budgets < export.
     Asserting it here means a new import that inverts the order fails a test
     rather than an application startup."""
-    layer = {money: 0, paths: 0, db: 1, fxrates: 1, ledger: 2,
-             importers: 3, budgets: 3, export: 4}
+    layer = {money: 0, paths: 0, fetch: 0, ocr: 0,
+             db: 1, fxrates: 1, fxcost: 1, fxlive: 1,
+             ledger: 2, cards: 2, receipts: 2,
+             importers: 3, budgets: 3, trends: 3, upcoming: 3,
+             goals: 4, export: 4}
     for module, rank in layer.items():
         source = inspect.getsource(module)
         for other, other_rank in layer.items():

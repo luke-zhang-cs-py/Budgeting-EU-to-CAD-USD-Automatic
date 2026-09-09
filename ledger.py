@@ -39,6 +39,11 @@ _NOISE = re.compile(r"\b(card|visa|mastercard|debit|credit|pos|contactless|"
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 _LONG_DIGITS = re.compile(r"\d{4,}")
 
+# Sightings a price level needs before it counts as a price. One month at a
+# different figure is a month at a different figure, not a new price -- see
+# _price_shape.
+MIN_AT_EACH_LEVEL = 2
+
 
 def normalise(description):
     """A description reduced to what identifies the purchase.
@@ -389,14 +394,76 @@ def recurring(connection, min_occurrences=3, tolerance_cents=200):
     for merchant, seen in by_merchant.items():
         if len(seen) < min_occurrences:
             continue
-        amounts = [a for _m, a in seen]
+        series = sorted(seen)                      # oldest month first
+        amounts = [a for _m, a in series]
+        shape = _price_shape(amounts, tolerance_cents)
+        if shape is None:
+            continue
+
         typical = sum(amounts) / len(amounts)
-        if all(abs(a - typical) <= tolerance_cents for a in amounts):
-            found.append({
-                "merchant": merchant,
-                "months": len(seen),
-                "typical_eur": int(round(typical)),
-                "typical_text": money.format(int(round(typical)), "EUR"),
-                "last_seen": max(m for m, _a in seen),
-            })
+        latest = amounts[-1]
+        found.append({
+            "merchant": merchant,
+            "months": len(series),
+            "typical_eur": int(round(typical)),
+            "typical_text": money.format(int(round(typical)), "EUR"),
+            "last_seen": max(m for m, _a in series),
+            # The month-by-month figures, so a caller can show the shape
+            # rather than a single averaged number. Carried here because the
+            # query that produces them already exists; a second module
+            # grouping the same rows again would be free to disagree with
+            # this one about what counts as recurring.
+            "series": [{"month": m, "eur": int(round(a)),
+                        "text": money.format(int(round(a)), "EUR")}
+                       for m, a in series],
+            "latest_eur": int(round(latest)),
+            "latest_text": money.format(int(round(latest)), "EUR"),
+            "changed": shape,
+        })
     return sorted(found, key=lambda f: -f["typical_eur"])
+
+
+def _price_shape(amounts, tolerance_cents):
+    """None if this is not a subscription, else how its price has behaved.
+
+    Two shapes count. One steady price is the obvious one. **One price
+    followed by another** also counts, and has to: requiring every month to
+    sit within tolerance of a single mean threw away exactly the case worth
+    flagging, a 9.99 that quietly became 14.99 -- the jump is bigger than any
+    tolerance loose enough to be safe, so the subscription vanished from the
+    list at the moment it got more expensive.
+
+    Returns {"from": cents, "to": cents} for a change and an empty dict for a
+    steady price, so a caller can tell "no change" from "not recurring" --
+    which None means, and which a falsy dict would blur.
+
+    Both levels need MIN_AT_EACH_LEVEL sightings. One month at a different
+    figure is not a new price, it is a month at a different figure -- and
+    without this a transport spend of 60, 62, 59 then 20 was reported as a
+    subscription whose price had fallen to 20, and its 20 went into the
+    projected monthly cost of things that are not subscriptions at all.
+    """
+    if _steady(amounts, tolerance_cents):
+        return {}
+
+    for cut in range(MIN_AT_EACH_LEVEL,
+                     len(amounts) - MIN_AT_EACH_LEVEL + 1):
+        before, after = amounts[:cut], amounts[cut:]
+        if not (_steady(before, tolerance_cents)
+                and _steady(after, tolerance_cents)):
+            continue
+        was = sum(before) / len(before)
+        now = sum(after) / len(after)
+        if abs(now - was) > tolerance_cents:
+            return {"from": int(round(was)), "to": int(round(now)),
+                    "from_text": money.format(int(round(was)), "EUR"),
+                    "to_text": money.format(int(round(now)), "EUR")}
+    return None
+
+
+def _steady(amounts, tolerance_cents):
+    """Whether these are all the same price, within tolerance."""
+    if not amounts:
+        return False
+    middle = sum(amounts) / len(amounts)
+    return all(abs(a - middle) <= tolerance_cents for a in amounts)

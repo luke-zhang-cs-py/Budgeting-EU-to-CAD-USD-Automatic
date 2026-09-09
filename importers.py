@@ -179,6 +179,7 @@ def _ofx_entry(row, account_currency, number):
         "fitid": row.get("fitid"),
     }
 
+
 def _amount_of(row, mapping):
     """Signed cents for one row: negative spent, positive received.
 

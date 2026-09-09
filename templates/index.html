@@ -212,6 +212,160 @@
   </section>
 </div>
 
+<!-- ------------------------------------------------------ snap a purchase -->
+<!-- Reads and offers; it never records by itself. OCR gets amounts wrong,
+     and a tracker that silently books EUR 5230 because the decimal point did
+     not survive is worse than one that cannot read screenshots at all. -->
+<section class="card">
+  <h2>Snap a purchase</h2>
+  <p class="hint" id="shotHint">
+    Upload a screenshot of a purchase — a card app's transaction detail, a
+    payment confirmation, a statement row. Everything read is shown for you to
+    correct before anything is saved. The image never leaves this machine.
+  </p>
+
+  <div class="row">
+    <label class="field grow">
+      <span>Screenshot</span>
+      <input type="file" id="shotFile" accept="image/*">
+    </label>
+  </div>
+
+  <div id="shotReading" hidden>
+    <div id="shotNeeds" class="needs" hidden></div>
+    <form id="shotForm" class="row">
+      <label class="field">
+        <span>Amount (EUR)</span>
+        <input id="shotAmount" inputmode="decimal" required>
+      </label>
+      <label class="field">
+        <span>Date</span>
+        <input id="shotDate" type="date" required>
+      </label>
+      <label class="field grow">
+        <span>Description</span>
+        <input id="shotDescription" required>
+      </label>
+      <label class="field">
+        <span>Category</span>
+        <input id="shotCategory" list="categoryList">
+      </label>
+      <label class="field">
+        <span>Card</span>
+        <select id="shotCard"></select>
+      </label>
+      <label class="field">
+        <span>Billed by the card</span>
+        <input id="shotCharged" inputmode="decimal" placeholder="85.94">
+      </label>
+      <div class="actions">
+        <button type="submit">Save purchase</button>
+        <button type="button" class="ghost" id="shotCancel">Discard</button>
+      </div>
+    </form>
+    <p class="hint" id="shotCandidates"></p>
+    <img id="shotImage" class="shotImage" alt="the uploaded screenshot" hidden>
+  </div>
+</section>
+
+<!-- --------------------------------------------------- what will it cost -->
+<section class="card">
+  <h2>What will this cost?</h2>
+  <p class="hint">
+    The latest published euro rate, fetched now, with your card's foreign
+    transaction fee on top. <strong>It is a daily reference rate, not a live
+    tick</strong> — and a card does not settle at the rate you see anyway:
+    Visa converts on the day it processes the purchase, and the fee follows.
+  </p>
+  <form id="estimateForm" class="row">
+    <label class="field">
+      <span>Amount (EUR)</span>
+      <input id="estimateAmount" inputmode="decimal" placeholder="52.30">
+    </label>
+    <label class="field">
+      <span>On card</span>
+      <select id="estimateCard"></select>
+    </label>
+    <div class="actions"><button type="submit">Work it out</button></div>
+  </form>
+  <div id="estimateResult" class="estimate" hidden></div>
+  <p class="hint" id="liveRate">—</p>
+</section>
+
+<!-- ------------------------------------------------------------- cards -->
+<section class="card">
+  <h2>Cards and accounts</h2>
+  <p class="hint">
+    The fee is a property of the card, not of the purchase — the same euro
+    coffee costs 2.5% more on a CIBC Visa than on a euro account. The
+    published figure is a starting point; once statements are imported the
+    real markup is measured from your own rows.
+  </p>
+  <ul class="cards" id="cardList"></ul>
+  <form id="cardForm" class="row">
+    <label class="field grow">
+      <span>Name</span>
+      <input id="cardName" placeholder="CIBC Dividend Visa" required>
+    </label>
+    <label class="field">
+      <span>Bills in</span>
+      <select id="cardCurrency"></select>
+    </label>
+    <label class="field">
+      <span>Last four</span>
+      <input id="cardMask" inputmode="numeric" placeholder="4417">
+    </label>
+    <label class="field">
+      <span>Fee %</span>
+      <input id="cardFee" inputmode="decimal" placeholder="2.5">
+    </label>
+    <div class="actions"><button type="submit">Add card</button></div>
+  </form>
+</section>
+
+<div class="split">
+  <!-- ----------------------------------------------------- subscriptions -->
+  <section class="card">
+    <h2>Subscriptions</h2>
+    <p class="hint" id="subsCost">—</p>
+    <ul class="rules" id="subsList"></ul>
+  </section>
+
+  <!-- ------------------------------------------------------------ goals -->
+  <section class="card">
+    <h2>Goals</h2>
+    <p class="hint" id="goalNote">—</p>
+    <ul class="rules" id="goalList"></ul>
+    <form id="goalForm" class="row">
+      <label class="field grow">
+        <span>Saving for</span>
+        <input id="goalName" placeholder="Flight home" required>
+      </label>
+      <label class="field">
+        <span>Target (EUR)</span>
+        <input id="goalTarget" inputmode="decimal" placeholder="600" required>
+      </label>
+      <label class="field">
+        <span>By</span>
+        <input id="goalDue" type="date">
+      </label>
+      <div class="actions"><button type="submit">Add goal</button></div>
+    </form>
+  </section>
+</div>
+
+<!-- ------------------------------------------------------------ movers -->
+<section class="card">
+  <h2>Unusual this month</h2>
+  <p class="hint">
+    Each category against <em>its own</em> average, not against a budget —
+    which is the comparison that catches something creeping up for a quarter.
+    Select one to see the purchases behind it.
+  </p>
+  <ul class="movers" id="moverList"></ul>
+  <div id="moverRows" class="moverRows" hidden></div>
+</section>
+
 <section class="card">
   <h2>Spending by month</h2>
   <div id="trend" class="trend"></div>
@@ -227,5 +381,10 @@
 <datalist id="categoryList"></datalist>
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<!-- Loaded after app.js and reuses its esc/el/api/say. A second copy of those
+     four helpers is the kind of duplication that drifts: this page already
+     shipped one XSS hole in the family, and two escapers means one of them
+     eventually stops being the one that gets fixed. -->
+<script src="{{ url_for('static', filename='js/finance.js') }}"></script>
 </body>
 </html>
