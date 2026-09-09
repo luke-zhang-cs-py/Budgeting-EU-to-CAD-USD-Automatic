@@ -1,0 +1,17 @@
+# Never build your ledger into an image. data/ holds wallet.db, the rate cache
+# and every uploaded screenshot; an image gets pushed to a registry.
+data/
+*.db
+*.csv
+!sample-statement.csv
+
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.coverage
+htmlcov/
+.pytest_cache/
+docs/

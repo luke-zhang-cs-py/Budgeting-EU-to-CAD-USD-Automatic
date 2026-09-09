@@ -6,7 +6,7 @@
 <title>Wallet — euro spending in CAD and USD — overview</title>
 <meta name="description" content="A local Flask app that converts euro spending at the rate that applied on the day it was spent, reads a purchase off a screenshot without the image leaving the machine, and measures what a card's foreign transaction fee actually costs.">
 <meta property="og:title" content="Wallet — euro spending in Canadian and US dollars">
-<meta property="og:description" content="699 tests, 100% coverage. Reads a purchase off a screenshot locally, and never records one unseen.">
+<meta property="og:description" content="759 tests, 100% coverage. Reads a purchase off a screenshot locally, and never records one unseen.">
 <meta property="og:type" content="website">
 <style>
 /* The warm surface this family of pages uses. The marks on top come from the
@@ -247,6 +247,31 @@ footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width
   <p class="note" id="validationNote"></p>
 </section>
 
+<!-- ======================================================= being hosted -->
+<section class="panel">
+  <h2>Reachable from somewhere else</h2>
+  <p class="sub">
+    It binds <code>127.0.0.1</code> with no password because it holds a
+    spending history. Hosting it is not a deployment task with a security
+    appendix &mdash; it is a change of threat model, so the app will not let
+    you do it by accident.
+  </p>
+  <pre id="gateSample"></pre>
+  <p>
+    That last line is a <em>raise</em>, not a warning. The process exits and
+    says what to set. A warning printed into a log nobody reads is how a
+    financial ledger ends up on the open internet with no password on it.
+  </p>
+
+  <h3>What is done about what</h3>
+  <table>
+    <thead><tr><th>Threat</th><th>What is done about it</th></tr></thead>
+    <tbody id="threatBody"></tbody>
+  </table>
+
+  <p class="note" id="restNote"></p>
+</section>
+
 <!-- ======================================================== the modules -->
 <section class="panel" id="modulePanel">
   <h2>Where the code is</h2>
@@ -402,7 +427,8 @@ footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width
  * `wc -l` in the repository. Not estimated. */
 
 var MODULES = [
-  { name: 'app.py',       lines: 804, stmts: 401, missed: 0, does: 'the web front end; 34 routes in 16 small groups' },
+  { name: 'app.py',       lines: 921, stmts: 448, missed: 0, does: 'the web front end; 37 routes in 18 small groups' },
+  { name: 'auth.py',      lines: 320, stmts:  99, missed: 0, does: 'the password, the session, the CSRF token, the headers' },
   { name: 'receipts.py',  lines: 482, stmts: 202, missed: 0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
   { name: 'ledger.py',    lines: 469, stmts: 188, missed: 0, does: 'transactions, the duplicate rule, recurring detection' },
   { name: 'cards.py',     lines: 406, stmts: 164, missed: 0, does: 'cards, their fees in basis points, and their balances' },
@@ -422,11 +448,13 @@ var MODULES = [
   { name: 'ocr.py',       lines: 152, stmts:  54, missed: 0, does: 'image to text boxes; the optional engine sits behind it' },
   { name: 'export.py',    lines: 133, stmts:  40, missed: 0, does: 'the CSV, and whether it adds up to the ledger' },
   { name: 'fetch.py',     lines:  52, stmts:  16, missed: 0, does: 'one way to get bytes: urllib, then curl' },
-  { name: 'paths.py',     lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' }
+  { name: 'paths.py',     lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' },
+  { name: 'wsgi.py',      lines:  40, stmts:   5, missed: 0, does: 'the entry point a real server uses; not the dev one' }
 ];
 
 var TESTS = [
   { file: 'test_receipts.py',    n: 87, of: 'the screenshot parser, built from real engine output' },
+  { file: 'test_auth.py',        n: 60, of: 'the refusals: no password, no token, no session' },
   { file: 'test_app_finance.py', n: 55, of: 'routes for screenshots, rates, cards and planning' },
   { file: 'test_cibc.py',        n: 54, of: 'the headerless CIBC exports, all three layouts' },
   { file: 'test_cards.py',       n: 53, of: 'fees, balances, and the exact-vs-estimated split' },
@@ -552,11 +580,28 @@ var FEE = [
   ['a card with none', '0 is a real answer, not a missing one']
 ];
 
+var THREATS = [
+  ['Guessing the password',
+   'scrypt, then three free attempts and a refusal window doubling to a capped fifteen minutes. <b>Refused, not slept</b> &mdash; sleeping in a login handler lets an attacker exhaust the workers for free, which turns a guessing defence into a denial of service. A test asserts <code>time.sleep</code> does not appear.'],
+  ['A forged request from another site',
+   'A session token that must come back in a header, on all 19 state-changing routes. <code>SameSite=Lax</code> too, but as a second lock: three of those routes take multipart uploads, which a plain cross-origin form can send with no preflight to stop it.'],
+  ['A route somebody forgot to protect',
+   'Everything needs a session except four named endpoints, and the test walks the real routing table rather than a list. A route added next year is closed because nobody opted it out.'],
+  ['Learning something from a failed login',
+   'One reply, byte for byte, however the guess was wrong. A test collects the bodies for four kinds of wrong password and asserts the set has one element.'],
+  ['Being sent somewhere else after signing in',
+   'The <code>?next=</code> parameter is refused unless it is a plain local path. <code>//evil.example</code> is the case that catches people: it looks like a path and is protocol-relative.'],
+  ['A stolen cookie',
+   '<code>HttpOnly</code>, <code>Secure</code> once public, and a fortnight&rsquo;s lifetime. Both flags are conditional on the host, because <code>Secure</code> on a loopback run means the cookie is never sent at all.'],
+  ['Losing the data on the next deploy',
+   'The likeliest way to lose it, and not a security problem at all. Most platforms hand each deploy a fresh filesystem. The Dockerfile declares a volume and sets <code>WALLET_DATA</code> to it &mdash; attach something, and back it up.']
+];
+
 var RATE_HISTORY_DAYS = 7089;
 var TABLES = 6;
-var ROUTE_COUNT = 34;
-var ROUTE_GROUPS = 16;
-var TEST_LINES = 6760;
+var ROUTE_COUNT = 37;
+var ROUTE_GROUPS = 18;
+var TEST_LINES = 7365;
 
 /* ------------------------------------------------------------- helpers */
 
@@ -740,6 +785,27 @@ function drawRoutes() {
   }).join('');
 }
 
+function drawThreats() {
+  /* Authored prose with intentional markup, like RULES and BUGS above. */
+  el('threatBody').innerHTML = THREATS.map(function (t) {
+    return '<tr><td><b>' + t[0] + '</b></td><td>' + t[1] + '</td></tr>';
+  }).join('');
+
+  el('gateSample').textContent = [
+    "loopback, no password   ->  runs, no login.   What it has always done.",
+    "loopback, password set  ->  runs, asks for it.",
+    "anything else, no hash  ->  refuses to start, and says what to set."
+  ].join('\n');
+
+  el('restNote').textContent =
+    'What it does not do: there is no encryption at rest. Anyone who can ' +
+    'read the disk can read the database, so hosting this means trusting ' +
+    'the host with the file. That is a real decision, and it is the reason ' +
+    'the app still defaults to your own machine. There is also exactly one ' +
+    'account — no registration, no reset, no email — because all ' +
+    'of that is attack surface a single-user ledger has no use for.';
+}
+
 function drawSamples() {
   el('ocrSample').textContent = [
     "y=  80 h= 20 conf=0.81  'REWE SAGTDANKE'           <- the space is gone",
@@ -806,6 +872,7 @@ drawFee();
 drawRoutesIn();
 drawDoes();
 drawRoutes();
+drawThreats();
 drawSamples();
 </script>
 </body>

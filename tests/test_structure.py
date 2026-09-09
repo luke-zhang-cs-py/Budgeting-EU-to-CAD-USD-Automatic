@@ -15,6 +15,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import auth       # noqa: E402
 import budgets    # noqa: E402
 import cards      # noqa: E402
 import db         # noqa: E402
@@ -39,9 +40,9 @@ import upcoming   # noqa: E402
 # covering the code it was written for -- so adding to it is part of adding a
 # module. The four feature modules and the three helpers were added at once
 # and the guards found real faults in them immediately.
-MODULES = (money, paths, fetch, ocr, db, fxrates, fxcost, fxlive, layout,
-           ledger, cards, receipts, importers, budgets, trends, upcoming,
-           goals, export)
+MODULES = (money, paths, fetch, ocr, auth, db, fxrates, fxcost, fxlive,
+           layout, ledger, cards, receipts, importers, budgets, trends,
+           upcoming, goals, export)
 
 
 def _code_of(module):
@@ -257,7 +258,7 @@ def test_the_module_layers_do_not_cycle():
     """money < paths < db/fxrates < ledger < importers/budgets < export.
     Asserting it here means a new import that inverts the order fails a test
     rather than an application startup."""
-    layer = {money: 0, paths: 0, fetch: 0, ocr: 0,
+    layer = {money: 0, paths: 0, fetch: 0, ocr: 0, auth: 0,
              db: 1, fxrates: 1, fxcost: 1, fxlive: 1,
              ledger: 2, cards: 2, receipts: 2,
              importers: 3, budgets: 3, trends: 3, upcoming: 3,

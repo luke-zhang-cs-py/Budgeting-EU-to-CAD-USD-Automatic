@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Wallet — sign in</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+/* The login page carries its own handful of rules rather than adding a
+   variant of every card style to the main stylesheet for one screen. */
+.gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.gateCard {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 26px 28px; width: 100%; max-width: 380px;
+}
+.gateCard h1 { margin: 0 0 4px; font-size: 19px; }
+.gateCard .sub { margin: 0 0 20px; color: var(--ink-dim); font-size: var(--t-small); }
+.gateCard label { display: block; margin-bottom: 14px; }
+.gateCard label span {
+  display: block; margin-bottom: 5px; color: var(--ink-dim);
+  font-size: var(--t-small); text-transform: uppercase; letter-spacing: .05em;
+}
+.gateCard input[type="password"] { width: 100%; }
+.gateCard button { width: 100%; }
+.gateNote { margin: 18px 0 0; color: var(--ink-faint); font-size: var(--t-small); }
+.gateError {
+  margin: 0 0 16px; padding: 9px 12px; border-radius: 7px;
+  background: #2b1a18; color: var(--over); font-size: var(--t-small);
+}
+</style>
+</head>
+<body>
+<main class="gate">
+  <form class="gateCard" method="post" action="{{ url_for('log_in') }}"
+        autocomplete="on">
+    <h1>Wallet</h1>
+    <p class="sub">Euro spending, in Canadian and US dollars</p>
+
+    {% if error %}<p class="gateError" role="alert">{{ error }}</p>{% endif %}
+
+    <!-- The token also guards this form. A forged login does little harm,
+         but the door with the lock on it should have the lock on it. -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <label>
+      <span>Password</span>
+      <input type="password" name="password" required autofocus
+             autocomplete="current-password"
+             {% if wait %}disabled{% endif %}>
+    </label>
+
+    <button type="submit" {% if wait %}disabled{% endif %}>Sign in</button>
+
+    <p class="gateNote">
+      One password, no account. It is checked against a scrypt hash set in
+      the environment — the password itself is not stored anywhere, so there
+      is nothing here to reset it with.
+    </p>
+  </form>
+</main>
+</body>
+</html>

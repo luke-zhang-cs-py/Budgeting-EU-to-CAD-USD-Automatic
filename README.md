@@ -12,7 +12,7 @@ A local Flask app that takes euro spending, converts each purchase to Canadian
 and US dollars **at the rate that applied on the day it was spent**, writes the
 result to a CSV, and tracks it against a monthly budget per category.
 
-Everything stays on your machine. No account, no API key, no bank connection.
+Everything stays on your machine by default: no account, no API key, no bank connection. It can be [hosted](#running-it-somewhere-other-than-your-own-machine) if you want it from your phone, and refuses to start reachable without a password.
 
 ```bash
 pip install -r requirements.txt
@@ -280,6 +280,101 @@ looks like an ordinary small purchase.
 | `GET POST /api/goals` | goals and what the month contributed |
 | `DELETE /api/goals/<id>` | remove one |
 
+## Running it somewhere other than your own machine
+
+The app binds `127.0.0.1` with no password because it holds your spending
+history. Reaching it from anywhere else means turning that off, so it will not
+let you do it by accident:
+
+```
+loopback, no password   ->  runs, no login.        What it has always done.
+loopback, password set  ->  runs, asks for it.
+anything else, no hash  ->  refuses to start.
+```
+
+That last line is a raise, not a warning. `auth.guard` raises `Unsafe` and the
+process exits, telling you what to set. A warning printed into a log nobody
+reads is how a financial ledger ends up on the open internet with no password
+on it.
+
+### Read this before your first deploy
+
+**Point `WALLET_DATA` at a disk that survives a restart.** This is the single
+most likely way to lose the data. Most platforms give each deploy a fresh
+filesystem, so `wallet.db`, the rate cache and every uploaded screenshot are
+destroyed the next time you push. The `Dockerfile` declares
+`VOLUME ["/data"]` and sets `WALLET_DATA=/data` for exactly this reason —
+attach something to it. On Fly.io that is `fly volumes create`; on Render, a
+disk; on a VPS, a bind mount.
+
+Back it up too. It is one SQLite file and a folder of images.
+
+### Setting it up
+
+```bash
+python -m auth                    # asks twice, prints WALLET_PASSWORD_HASH=...
+python -c "import secrets; print(secrets.token_hex(32))"   # SECRET_KEY
+```
+
+The password is typed, never passed as an argument — a command line ends up in
+shell history and in the process list. Only the hash is stored, so there is
+nothing anywhere that can recover the password; keep it in a password manager.
+
+Then, in the environment where it runs:
+
+| Variable | |
+|---|---|
+| `WALLET_PASSWORD_HASH` | the scrypt hash. Required once reachable. |
+| `SECRET_KEY` | 32+ characters. Signs the session cookie; a guessable one lets anyone mint a logged-in session. Required once reachable. |
+| `WALLET_DATA` | the persistent volume. See above. |
+| `HOST` | `0.0.0.0` on a platform that proxies to you. |
+| `PORT` | usually set for you. |
+
+```bash
+docker build -t wallet .
+docker run -p 8000:8000 -v wallet-data:/data \
+  -e WALLET_PASSWORD_HASH='scrypt:...' \
+  -e SECRET_KEY='...' \
+  wallet
+```
+
+Or without Docker: `gunicorn wsgi:application --workers 2 --timeout 120`.
+`wsgi.py` exists rather than reusing `app.py`'s `__main__` because a
+deployment differs in ways that matter — the dev server is single-threaded, and
+the folder watcher must not run once per worker, since the right number of
+threads writing to one SQLite file is one.
+
+### HTTPS is the host's job, and the app assumes you did it
+
+Once `HOST` is not loopback the session cookie is marked `Secure`, so **it is
+not sent over plain HTTP at all**. If you deploy and the login page accepts
+your password and then bounces you straight back to it, that is this — you are
+on `http://`. Every platform worth using terminates TLS for you; put it behind
+one rather than turning the flag off.
+
+`Strict-Transport-Security` is sent only when public, because promising HTTPS
+on a loopback run that has none makes the app unreachable in a browser that
+believes it.
+
+### What the protection is, and what it is not
+
+| Threat | What is done about it |
+|---|---|
+| Guessing the password | scrypt, and three free attempts then a refusal window that doubles to 15 minutes. Refused, not slept — holding the request open would let an attacker exhaust the workers for free. |
+| A forged request from another site | A session token that must come back in a header, on all 19 state-changing routes. `SameSite=Lax` too, but that is a second lock rather than the lock: three of those routes take multipart uploads, which a plain cross-origin form can send. |
+| A stolen cookie | `HttpOnly` so script cannot read it, `Secure`, and a 14-day lifetime. |
+| Someone reading the page | Nothing is reachable without a session except `/login` and `/health`, and that list is checked by a test that walks the real routing table — so a route added later is closed because it was not opted out, rather than exposed because somebody forgot to opt it in. |
+| XSS | A CSP with `script-src 'self'`, which is only possible because the page has no inline script at all. |
+
+And what it does not address, because it cannot: **anyone who can read the
+disk can read the database.** There is no encryption at rest here. Hosting
+this means trusting the host with the file — which is a real decision, and the
+reason the app defaults to your own machine.
+
+There is also one account, deliberately. No registration, no password reset,
+no email. All of that is attack surface, and a single-user ledger has no use
+for any of it.
+
 ## Your data
 
 `data/` — holding `wallet.db` with every purchase, the rate cache, and
@@ -305,7 +400,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-699 tests, 100% of 2,195 statements. See [CONTRIBUTING.md](CONTRIBUTING.md)
+759 tests, 100% of 2,346 statements. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for the conventions and the one thing that will confuse you.
 
 The screenshot parser is tested without the OCR engine at all: `ocr.py` turns

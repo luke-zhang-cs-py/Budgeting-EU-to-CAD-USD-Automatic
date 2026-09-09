@@ -18,8 +18,10 @@ means touching one function of a dozen lines.
 import datetime as dt
 import os
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, url_for)
 
+import auth
 import budgets
 import cards
 import db
@@ -72,13 +74,23 @@ class Context:
         return request.args.get("month") or dt.date.today().strftime("%Y-%m")
 
 
-def create_app(directory=None):
+def create_app(directory=None, host=None):
+    """The app.
+
+    `host` decides how much protection is mandatory, and auth.configure
+    raises rather than returns if the answer is "more than is configured".
+    Called here rather than at the bottom of the module so that a test can
+    build a public-facing instance without setting environment variables for
+    the whole process.
+    """
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     app.config["WALLET_DIR"] = directory
+    auth.configure(app, host or HOST)
 
     context = Context(directory)
-    for register in (_pages, _reading, _writing, _importing,
+    for register in (_gatekeeping, _sessions,
+                     _pages, _reading, _writing, _importing,
                      _budgets, _rules_and_rates, _watching, _exporting,
                      _receipts, _receipt_files, _live, _cards,
                      _card_settings, _card_insight, _planning,
@@ -89,11 +101,108 @@ def create_app(directory=None):
 
 # ----------------------------------------------------------------- routes
 
+# Reachable without a session. Everything else is not.
+#
+# A denylist of *endpoints* rather than a prefix match on paths: "/login" as a
+# prefix would also open "/login-anything", and naming endpoints means a route
+# added later is closed by default rather than open by default.
+OPEN_ENDPOINTS = frozenset({"static", "log_in", "log_out", "health"})
+
+# Methods that change something. GET and HEAD skip the CSRF check because they
+# are not supposed to change anything -- and if one of them ever does, that is
+# the bug, not the missing token.
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _gatekeeping(app, ctx):
+    """The two checks every request passes before a route sees it."""
+
+    @app.before_request
+    def check():
+        # CSRF first, and before the login check, because the login form is
+        # itself a state-changing POST. A forged one does little harm, but
+        # "little harm" is not a reason to leave the one door unlatched.
+        if request.method in UNSAFE_METHODS and not auth.csrf_ok():
+            return jsonify({
+                "error": "this request did not carry a valid session token; "
+                         "reload the page and try again"}), 403
+
+        if request.endpoint in OPEN_ENDPOINTS:
+            return None
+        if auth.logged_in(app):
+            return None
+
+        # A page gets sent to the login screen; an API call gets a 401 it can
+        # act on. Answering a fetch() with a redirect to HTML surfaces as an
+        # unreadable JSON parse error rather than "you are logged out".
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "not logged in", "login": True}), 401
+        return redirect(url_for("log_in", next=request.path))
+
+    @app.after_request
+    def headers(response):
+        return auth.harden(response, app.config.get("WALLET_PUBLIC", False))
+
+
+def _sessions(app, ctx):
+    @app.route("/health")
+    def health():
+        """For a host's uptime check. Says nothing about the data."""
+        return jsonify({"ok": True})
+
+    @app.route("/login", methods=["GET", "POST"])
+    def log_in():
+        if not auth.required(app) or auth.logged_in(app):
+            return redirect(url_for("index"))
+
+        target = _safe_next(request.args.get("next")
+                            or request.form.get("next"))
+        if request.method == "GET":
+            return render_template("login.html", csrf_token=auth.csrf_token(),
+                                   next=target, error=None, wait=0)
+
+        wait = auth.blocked_for()
+        if wait:
+            return render_template(
+                "login.html", csrf_token=auth.csrf_token(), next=target,
+                error=f"Too many attempts. Try again in {wait} seconds.",
+                wait=wait), 429
+
+        if auth.password_matches(request.form.get("password"),
+                                 app.config["WALLET_PASSWORD_HASH"]):
+            auth.note_success()
+            auth.log_in()
+            return redirect(target)
+
+        auth.note_failure()
+        # One message however it was wrong, so this cannot be used to learn
+        # anything about the password.
+        return render_template(
+            "login.html", csrf_token=auth.csrf_token(), next=target,
+            error="That is not the password.", wait=0), 401
+
+    @app.route("/logout", methods=["POST"])
+    def log_out():
+        auth.log_out()
+        return redirect(url_for("log_in"))
+
+
+def _safe_next(target):
+    """Where to go after logging in, refusing anywhere off this site.
+
+    An open redirect turns a login page into a convincing way to send somebody
+    somewhere else. `//evil.example` is the case that catches people: it looks
+    like a path and is protocol-relative.
+    """
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return "/"
+    return target
+
 
 def _pages(app, ctx):
     @app.route("/")
     def index():
-        return render_template("index.html")
+        return render_template("index.html", csrf_token=auth.csrf_token())
 
 
 def _reading(app, ctx):
@@ -797,7 +906,15 @@ if __name__ == "__main__":
     print(f"Watching {folder} every {sources.INTERVAL_SECONDS}s")
     print("  drop a bank export there and it imports itself")
 
-    print(f"Wallet FX & Budget on http://{HOST}:{PORT}")
+    # The dev server, for the machine this is running on. A deployment uses
+    # wsgi.py behind gunicorn instead -- Werkzeug's server says so itself, and
+    # it is single-threaded enough that one slow rate fetch blocks the page.
+    scheme = "http"
+    print(f"Wallet FX & Budget on {scheme}://{HOST}:{PORT}")
+    if auth.required(app):
+        print("  a password is set; you will be asked for it")
+    else:
+        print("  no password set, and none needed on loopback")
     try:
         app.run(host=HOST, port=PORT, debug=DEBUG)
     finally:

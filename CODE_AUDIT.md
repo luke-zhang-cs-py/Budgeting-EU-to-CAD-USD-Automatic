@@ -547,3 +547,152 @@ unreachable branches removed; money formatting moved out of the browser.
 modules added to `MODULES`. Each was run against a planted fault: the layer
 guard, the private-reach guard and the deferred-import guard were all
 confirmed to go red on a deliberately broken copy before being trusted.
+
+
+# Fourth pass — putting it on the web
+
+Measured 9 September 2026: **759 tests, 100% of 2,346 statements**, no flake8
+finding in any new code including `--max-complexity=10`.
+
+The app was loopback-only with no authentication, deliberately, because it
+holds a spending history. Hosting it is not a deployment task with a security
+appendix; it is a change of threat model, and everything below follows from
+that.
+
+## The one decision the rest hangs off
+
+**The app refuses to start reachable without a password.** `auth.guard` raises
+`Unsafe` and the process exits. Not a warning, not a default that can be left
+in place — a raise, at import, so `gunicorn wsgi:application` fails to boot
+rather than serving an unprotected ledger.
+
+    loopback, no password   -> runs, no login. What it always did.
+    loopback, password set  -> runs, asks for it.
+    anything else, no hash  -> refuses, and says what to set.
+
+Every other measure here is a mitigation that can be argued about. This one is
+the difference between a private ledger and a public one, and it is the only
+mistake in this change that cannot be walked back. It is the first test in
+`test_auth.py` and the first thing verified by mutation.
+
+## Closed by default, not open by default
+
+`OPEN_ENDPOINTS` is a frozenset of four names. Everything else needs a
+session, and `test_every_route_is_closed_unless_it_is_named_open` walks the
+real `url_map` rather than a list — so a route added next year is protected
+because nobody opted it out, rather than exposed because somebody forgot to
+opt it in. It asserts it actually checked more than fifteen routes, because a
+loop that silently iterates nothing is the classic vacuous guard.
+
+Endpoints rather than a path prefix: `/login` as a prefix would also open
+`/login-anything`.
+
+## CSRF, and why it is not optional here
+
+19 of the 34 routes change state, and three take multipart uploads — which a
+plain cross-origin HTML form can send, with no preflight to stop it. Once
+there is a cookie carrying authority, a page on another site can spend it.
+
+`SameSite=Lax` is set and helps, but it is a second lock. The lock is a token
+in the session that must come back in a header, checked with
+`hmac.compare_digest`, on every unsafe method.
+
+It is enforced **always**, not only when a password is configured. On loopback
+without auth there is still a real attack: a website you visit can make your
+browser POST to `127.0.0.1:5004` and delete a transaction. That has been true
+the whole time; it is closed now.
+
+The cost was one `send()` wrapper in the browser and a `CsrfClient` in the
+tests, which attaches the token so the 61 existing call sites read exactly as
+they did. The tests that check the protection have to pass `no_csrf=True` —
+opting *out* deliberately, so they cannot pass by accident.
+
+## Guessing
+
+Three free attempts, then a refusal window doubling from five seconds to a
+capped fifteen minutes. Two details worth the words:
+
+**Refused, not slept.** `time.sleep` in a login handler lets an attacker
+exhaust the worker pool for free, which converts a guessing defence into a
+denial of service. There is a test asserting the string does not appear.
+
+**Capped.** Uncapped doubling eventually locks the owner out for years.
+
+The reply is byte-identical however the guess was wrong — a test collects the
+bodies for four kinds of wrong password into a set and asserts it has one
+element, because anything that differs is a way to learn about the password.
+
+## Smaller things the checklist caught
+
+**An open redirect.** `?next=` after login. `//evil.example` is the case that
+catches people: it looks like a path and is protocol-relative. `_safe_next`
+refuses anything not starting with a single `/`.
+
+**A 401 that a fetch can act on.** An API call without a session returns JSON
+with `login: true` rather than a redirect to HTML — following the redirect
+would fail JSON parsing and surface as a parse error instead of "signed out".
+The browser reloads on it, landing on the login page.
+
+**HSTS only when public.** Promising HTTPS on a loopback run that has none
+makes the app unreachable in a browser that believes it.
+
+**`Secure` only when public**, for the mirror-image reason: on plain HTTP the
+cookie would never be sent, so login would appear to succeed and then bounce
+straight back. It is called out in the README because it is the first thing
+that will go wrong on a real deploy.
+
+**`import getpass` inside `__main__`.** Caught by the existing
+no-function-imports guard the moment `auth` was added to `MODULES` — hoisted
+rather than exempted, since getpass is stdlib and free.
+
+## Two branches that were reachable after all
+
+Chasing the last 1% found the opposite of the previous pass. `password_matches`
+has a `try/except ValueError` that looked defensive; `scrypt:1:2:3$salt$bad`
+raises it, because the parameters parse as a hash and then do not work as one.
+Without the except, a mangled environment variable is a 500 on every login —
+which tells an attacker its configuration is broken. Kept, and now tested with
+inputs that actually raise.
+
+## What this does not do
+
+There is no encryption at rest. Anyone who can read the disk can read the
+database, and hosting means trusting the host with the file. That is stated in
+the README rather than left for someone to assume otherwise, because it is a
+real decision and it is the reason the app still defaults to your own machine.
+
+## Bug classes
+
+| Class | Instance | State |
+|---|---|---|
+| Authentication | A financial ledger reachable with no password | Refuses to start; first test, and mutation-checked |
+| CSRF | 19 state-changing routes, three accepting multipart | Session token in a header, enforced on every unsafe method |
+| Open redirect | `?next=//evil.example` after login | `_safe_next`, with the protocol-relative case tested |
+| Information leak | A login reply that differs by how the guess was wrong | One body, asserted by set membership |
+| Denial of service | Sleeping to slow down guessing | Refusal window; a test forbids `time.sleep` |
+| Denial of service | An uncapped backoff locking the owner out | `MAX_BACKOFF_SECONDS` |
+| Transport | `Secure` or HSTS on a loopback run | Both conditional on the host being public |
+| Data loss | An ephemeral filesystem destroying the ledger on redeploy | `VOLUME` in the Dockerfile, and the first thing the hosting section says |
+| Concurrency | The folder watcher running once per gunicorn worker | `wsgi.py` does not start it, and a test reads the file to confirm |
+
+## Maintenance classification
+
+**Corrective** — nothing; this is new behaviour rather than a fix.
+
+**Adaptive** — the app now has two shapes, and `create_app(host=...)` makes
+which one it is an argument rather than a global, so a test can hold both at
+once.
+
+**Perfective** — `send()` in the browser, so no call site carries the token
+itself; `CsrfClient`, so no test does either.
+
+**Preventive** — `test_every_route_is_closed_unless_it_is_named_open`,
+`test_the_open_list_is_short_and_deliberate`, and the autouse
+`clean_environment` fixture, which unsets every configuration variable for
+every test. That last one is the transit project's bug pre-empted: a test that
+asserts a default while reading the environment passes locally and fails for
+anyone who has `HOST` exported.
+
+All five protections were run against a deliberately broken copy — the
+refusal, the CSRF check, the gate, the redirect guard and the backoff — and
+each was confirmed to go red before being trusted.

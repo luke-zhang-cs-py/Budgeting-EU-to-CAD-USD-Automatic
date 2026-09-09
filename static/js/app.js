@@ -30,9 +30,35 @@ function say(text, kind) {
   box.hidden = false;
 }
 
+/* The session token, read once from the meta tag the server rendered.
+ * Attached to every state-changing request by send(), so no call site has to
+ * remember -- forgetting it at one of nineteen call sites would be a 403
+ * somebody debugs for an hour. */
+var CSRF = (document.querySelector('meta[name="csrf-token"]') || {})
+  .content || '';
+
+var UNSAFE = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+
+function send(url, options) {
+  var settings = options || {};
+  var method = (settings.method || 'GET').toUpperCase();
+  if (UNSAFE[method]) {
+    settings.headers = settings.headers || {};
+    settings.headers['X-CSRF-Token'] = CSRF;
+  }
+  return fetch(url, settings);
+}
+
 function api(url, options) {
-  return fetch(url, options).then(function (reply) {
+  return send(url, options).then(function (reply) {
     return reply.json().then(function (body) {
+      if (reply.status === 401 && body.login) {
+        /* The session went away -- expired, or signed out in another tab.
+         * Reloading lands on the login page rather than leaving the screen
+         * showing figures that are no longer being refreshed. */
+        window.location.reload();
+        throw new Error('signed out');
+      }
       if (!reply.ok) throw new Error(body.error || ('HTTP ' + reply.status));
       return body;
     });
@@ -562,11 +588,11 @@ function wire() {
   document.addEventListener('click', function (event) {
     var target = event.target;
     if (target.dataset && target.dataset.delete) {
-      fetch('/api/transaction/' + target.dataset.delete, { method: 'DELETE' })
+      send('/api/transaction/' + target.dataset.delete, { method: 'DELETE' })
         .then(refresh);
     }
     if (target.dataset && target.dataset.rule) {
-      fetch('/api/rules/' + target.dataset.rule, { method: 'DELETE' })
+      send('/api/rules/' + target.dataset.rule, { method: 'DELETE' })
         .then(refresh);
     }
   });

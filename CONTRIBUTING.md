@@ -68,6 +68,23 @@ function -- the one deferred import in the project, allowed by name in
 the whole rest of the wallet. `ocr.available()` is the only way to ask. No
 screenshot is ever sent to a service.
 
+**A new route is closed unless you say otherwise.** Everything requires a
+session except the four endpoints named in `app.OPEN_ENDPOINTS`, and
+`test_every_route_is_closed_unless_it_is_named_open` walks the real routing
+table to check it. So adding a route protects it by default; opening one is a
+visible edit to a frozenset.
+
+**Every state-changing request carries the CSRF token.** `send()` in app.js
+attaches it, so no call site has to remember -- forgetting it at one of
+nineteen would be a 403 somebody debugs for an hour. If you add a bare
+`fetch()` that POSTs, route it through `send()`.
+
+**Never make the app reachable without a password.** `auth.guard` raises
+`Unsafe` for any host that is not loopback unless `WALLET_PASSWORD_HASH` and
+a 32-character `SECRET_KEY` are both set. Do not add a flag that bypasses it.
+It is the one mistake in this project that cannot be walked back, and a
+warning in a log is not a substitute.
+
 **Guards name the thing they guard, not one file.** Every check in
 `test_frontend.py` read `app.js` by name, so a second script escaped all of
 them and shipped a duplicate money formatter. `test_structure.py` has the same
@@ -82,7 +99,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-Both clean before a push -- 699 tests, 100% of 2,195 statements. The cases
+Both clean before a push -- 759 tests, 100% of 2,346 statements. The cases
 most worth adding to are the awkward ones: a bank format that imports wrong, a
 holiday the rate lookback handles badly, an amount that parses to the wrong
 magnitude, a screenshot the parser reads as a year.

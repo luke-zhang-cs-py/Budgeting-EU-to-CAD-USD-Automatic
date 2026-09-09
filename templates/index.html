@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Read once by app.js and sent on every state-changing request.
+     A meta tag rather than a cookie the script reads, because the
+     session cookie is HttpOnly and should stay that way. -->
+<meta name="csrf-token" content="{{ csrf_token }}">
 <title>Wallet — euros to CAD and USD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">

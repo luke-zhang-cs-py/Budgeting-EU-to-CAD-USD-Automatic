@@ -15,6 +15,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import conftest     # noqa: E402
 import app as web   # noqa: E402
 import cards        # noqa: E402
 import fetch        # noqa: E402
@@ -43,6 +44,9 @@ def client(tmp_path, monkeypatch):
         handle.write(RATES)
     application = web.create_app(str(tmp_path))
     application.config["TESTING"] = True
+    # Carries the CSRF token so the calls below read as they did before it
+    # existed. The tests that check the protection works pass no_csrf=True.
+    application.test_client_class = conftest.CsrfClient
     yield application.test_client()
     fxrates.reset()
     fxlive.reset()

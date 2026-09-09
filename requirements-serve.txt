@@ -1,0 +1,11 @@
+# Running this somewhere other than your own machine.
+#
+# gunicorn is the server; the dev server in app.py is not for this and says so
+# on startup. Two workers is plenty for one person, and matters more than it
+# sounds: the ledger is a single SQLite file, and more writers means more
+# "database is locked".
+gunicorn>=21.2,<24
+
+# Only needed if you are hosting on Windows, where gunicorn does not run.
+# Uncomment it there.
+# waitress>=3.0,<4
