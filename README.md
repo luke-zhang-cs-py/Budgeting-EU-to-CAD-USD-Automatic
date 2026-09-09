@@ -4,6 +4,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue.svg)](https://www.python.org/)
 
+**[Read the overview →](https://luke-zhang-cs-py.github.io/Budgeting-EU-to-CAD-USD-Automatic/)**
+— how the screenshot reader decides what an amount is, why "real time" is the
+wrong promise for a card rate, and every bug this thing has had.
+
 A local Flask app that takes euro spending, converts each purchase to Canadian
 and US dollars **at the rate that applied on the day it was spent**, writes the
 result to a CSV, and tracks it against a monthly budget per category.

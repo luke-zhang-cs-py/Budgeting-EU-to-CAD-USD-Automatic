@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet — euro spending in CAD and USD — overview</title>
+<meta name="description" content="A local Flask app that converts euro spending at the rate that applied on the day it was spent, reads a purchase off a screenshot without the image leaving the machine, and measures what a card's foreign transaction fee actually costs.">
+<meta property="og:title" content="Wallet — euro spending in Canadian and US dollars">
+<meta property="og:description" content="699 tests, 100% coverage. Reads a purchase off a screenshot locally, and never records one unseen.">
+<meta property="og:type" content="website">
+<style>
+/* The warm surface this family of pages uses. The marks on top come from the
+ * validated palette and were re-run against *this* surface, because contrast
+ * only means anything against the colour the chart actually sits on:
+ *
+ *   series  #2a78d6  on #fffdf7   all five checks PASS (light)
+ *   series  #3987e5  on #1a1a19   all five checks PASS (dark)
+ *   good    #0ca30c  3.30:1
+ *   warning #fab219  1.80:1  sub-3:1 BY DESIGN -> always icon + label
+ *   crit    #d03b3b  4.72:1
+ *
+ * Run as a categorical set the status colours fail on #fab219, and are meant
+ * to: status is not a categorical palette, and amber is legal only with a
+ * glyph and a word beside it. Every use of it here has both.
+ *
+ * Dark is a selected set stepped for the dark surface, not an inversion. */
+.viz-root {
+  color-scheme: light;
+  --plane:     #ece6d6;
+  --surface:   #fffdf7;
+  --ink:       #12161d;
+  --ink-2:     #3c4453;
+  --ink-muted: #8d7a52;
+  --grid:      #ece6d6;
+  --ring:      #ded5bf;
+  --code-bg:   #f6f1e4;
+  --series:    #2a78d6;
+  --track:     #ece6d6;
+  --good:      #0ca30c;
+  --warning:   #fab219;
+  --critical:  #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+    --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
+    --series: #3987e5; --track: #2c2c2a;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19;
+  --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+  --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
+  --series: #3987e5; --track: #2c2c2a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+.viz-root {
+  --text: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 34px 24px 44px;
+  font: 15px/1.55 var(--text);
+  background: var(--plane); color: var(--ink);
+  min-height: 100vh;
+}
+main { max-width: 980px; margin: 0 auto; }
+
+.crumb {
+  margin: 0 0 6px; font: 400 12px var(--mono); color: var(--ink-muted);
+  letter-spacing: .02em;
+}
+h1 { font-size: 23px; margin: 0 0 5px; letter-spacing: -0.2px; }
+.lede { color: var(--ink-2); margin: 0; font-size: 15px; max-width: 68ch; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+button, .btn {
+  font: 400 13px var(--text); cursor: pointer; text-decoration: none;
+  display: inline-block;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 7px 12px;
+}
+button:hover, .btn:hover { border-color: var(--ink-muted); }
+button[aria-pressed="true"] { border-color: var(--series); color: var(--series); }
+
+/* ------------------------------------------------------------ stat tiles */
+/* A bare stat tile is the one form that ships without a hover layer: there is
+ * no plot to interrogate, just the figure and what it counts. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); gap: 12px; margin: 26px 0 10px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; }
+.tile .k { display: block; color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.tile .v { display: block; margin-top: 3px; font: 600 27px/1.12 var(--text); font-variant-numeric: tabular-nums; }
+.tile .n { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; }
+
+.note { color: var(--ink-muted); font-size: 13px; max-width: 80ch; margin: 12px 0 0; }
+
+/* ---------------------------------------------------------------- panels */
+.panel { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 17px 19px; margin-top: 22px; }
+.panel h2 { margin: 0 0 2px; font-size: 15px; }
+.panel h3 { margin: 20px 0 6px; font-size: 13px; color: var(--ink-2); }
+.panel .sub { margin: 0 0 14px; color: var(--ink-2); font-size: 13px; max-width: 76ch; }
+.panel p { font-size: 14px; color: var(--ink-2); max-width: 76ch; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 22px; }
+
+/* Thin marks on a recessive track, 4px rounding on the data end only so the
+ * mark stays anchored flat to the baseline it grows from. */
+.bars { display: grid; gap: 9px; }
+.bar { display: grid; grid-template-columns: 118px 1fr 92px; gap: 12px; align-items: center; }
+.bar .lab { font: 400 12.5px var(--mono); color: var(--ink-2); }
+.bar .rail { position: relative; height: 12px; background: var(--track); border-radius: 3px; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--series); border-radius: 0 4px 4px 0; }
+.bar .val { text-align: right; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar:hover .rail { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ----------------------------------------------------------------- table */
+table { width: 100%; border-collapse: collapse; }
+caption { text-align: left; color: var(--ink-2); font-size: 13px; padding-bottom: 10px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--grid); font-size: 13px; vertical-align: top; }
+th { color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.mono { font-family: var(--mono); font-size: 12px; }
+tr.total td { border-bottom: none; font-weight: 600; }
+[hidden] { display: none !important; }
+
+code { font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); border: 1px solid var(--grid); border-radius: 4px; padding: 1px 5px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--grid); border-radius: 8px;
+  padding: 13px 15px; overflow-x: auto;
+  font: 12.5px/1.7 var(--mono); color: var(--ink); margin: 12px 0 0;
+}
+
+/* Numbered steps, reused from the previous version of this page. */
+.flow { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.flow li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; color: var(--ink-2); }
+.step {
+  font: 500 11px var(--mono); color: var(--series);
+  border: 1px solid var(--ring); border-radius: 5px;
+  text-align: center; padding: 1px 0; height: 20px;
+}
+
+/* Status. Never colour alone: each carries a glyph and a word, which is what
+ * makes the sub-3:1 amber legal. */
+.flag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+        padding: 2px 8px; border: 1px solid var(--ring); border-radius: 999px;
+        white-space: nowrap; }
+.flag .g { font-family: var(--mono); font-size: 11px; }
+.flag.good { color: var(--good); border-color: var(--good); }
+.flag.warn { color: var(--warning); border-color: var(--warning); }
+.flag.crit { color: var(--critical); border-color: var(--critical); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: 13px; margin-top: 10px; }
+.kv dt { color: var(--ink-muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.kv dd { margin: 0; color: var(--ink-2); }
+
+footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width: 84ch; }
+</style>
+</head>
+
+<body class="viz-root" data-palette="#2a78d6">
+<main>
+
+<div class="head">
+  <div>
+    <p class="crumb">Budgeting-EU-to-CAD-USD-Automatic &middot; port 5004</p>
+    <h1>Euro spending, in Canadian and US dollars</h1>
+    <p class="lede">
+      A local Flask app. It converts every purchase at the rate that applied
+      <strong>on the day it was spent</strong>, reads a purchase off a
+      screenshot without the image leaving the machine, and says what your
+      card&rsquo;s foreign fee will actually cost. No account, no API key, no
+      bank connection.
+    </p>
+  </div>
+  <div class="controls">
+    <button id="themeBtn" type="button">Theme</button>
+    <button id="tableBtn" type="button" aria-pressed="false">Table view</button>
+    <a class="btn" href="https://github.com/luke-zhang-cs-py/Budgeting-EU-to-CAD-USD-Automatic">Repository</a>
+    <a class="btn" id="localBtn" href="http://127.0.0.1:5004/"
+       title="Only works on a machine that is running the app">Open app (local)</a>
+  </div>
+</div>
+
+<!-- Filled from DATA below. Typed into the markup, these went stale the
+     moment a test count moved: this page read 288 tests and 834 statements
+     while the suite had 699 and 2,195. -->
+<section class="tiles" id="tiles" aria-label="Headline figures"></section>
+<p class="note" id="tilesNote"></p>
+
+<!-- ===================================================== the screenshot -->
+<section class="panel">
+  <h2>Reading a purchase off a screenshot</h2>
+  <p class="sub">
+    Upload a card app&rsquo;s transaction detail, a payment confirmation, or a
+    row of online banking. The engine is a local ONNX model in its own
+    optional requirements file &mdash; <strong>no picture of what you bought
+    is sent anywhere</strong>. Without it installed the upload still keeps the
+    image and you type the amount.
+  </p>
+
+  <p>
+    <strong>Nothing reaches the ledger unseen.</strong> The reader fills a
+    form and the form is what saves. That is not caution for its own sake: a
+    misread booking &euro;5,230 instead of &euro;52.30 surfaces a month later
+    in a total nobody can explain, which is far worse than a screenshot that
+    could not be read at all.
+  </p>
+
+  <h3>How it decides, and what it refuses</h3>
+  <table>
+    <caption>Every row here was wrong first. The parser is pure &mdash; it
+      takes text boxes, not an image &mdash; so all of it is tested without
+      the model.</caption>
+    <thead><tr><th>Rule</th><th>Why</th></tr></thead>
+    <tbody id="rulesBody"></tbody>
+  </table>
+
+  <h3>What the engine actually returns</h3>
+  <p class="sub">
+    The strings the tests are built from came off real screenshots, mangled
+    exactly like this. Inventing tidier input would test a parser for a
+    problem this one does not have &mdash; and reading the real output is
+    what found three of the bugs below.
+  </p>
+  <pre id="ocrSample"></pre>
+</section>
+
+<!-- ========================================================== the rate -->
+<section class="panel">
+  <h2>What it will cost, and the words &ldquo;real time&rdquo;</h2>
+  <p class="sub">
+    The phrase promises more than the situation can use. Both free sources
+    republish the ECB&rsquo;s <strong>once-a-day</strong> fixing; there is no
+    free intraday EUR/CAD tick. Chasing one would be false precision anyway,
+    because <strong>a card is not settled at the rate at the moment you
+    tap</strong> &mdash; Visa converts on the day the transaction reaches the
+    network, and the fee follows.
+  </p>
+  <p>
+    So the figure carries the day it was published and the minute it was
+    fetched, and the page says plainly that it is a daily reference rate
+    rather than implying a precision that does not exist.
+  </p>
+  <pre id="estimateSample"></pre>
+  <p class="note" id="validationNote"></p>
+</section>
+
+<!-- ======================================================== the modules -->
+<section class="panel" id="modulePanel">
+  <h2>Where the code is</h2>
+  <p class="sub" id="moduleSub"></p>
+  <div class="bars" id="moduleBars"></div>
+</section>
+
+<section class="panel" id="testPanel">
+  <h2>Where the tests are</h2>
+  <p class="sub" id="testSub"></p>
+  <div class="bars" id="testBars"></div>
+</section>
+
+<section class="panel" id="tablePanel" hidden>
+  <h2>The same figures as a table</h2>
+  <table>
+    <caption>Every module with its size, statements, coverage and
+      responsibility.</caption>
+    <thead>
+      <tr>
+        <th scope="col">Module</th><th scope="col" class="num">Lines</th>
+        <th scope="col" class="num">Statements</th>
+        <th scope="col" class="num">Cover</th>
+        <th scope="col">Responsibility</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</section>
+
+<!-- ======================================================= how it runs -->
+<div class="split">
+  <section class="panel">
+    <h2>Getting data in</h2>
+    <p class="sub">Apple Wallet and Google Wallet have no export API.</p>
+    <p>
+      They are sandboxed on the device, so nothing on a desktop can read them.
+      That is a real constraint, not a gap here. So there are five honest
+      routes:
+    </p>
+    <ol class="flow" id="routesIn"></ol>
+    <p class="note" id="cibcNote"></p>
+  </section>
+
+  <section class="panel">
+    <h2>What it does</h2>
+    <ul class="flow" id="doesList" style="gap:8px"></ul>
+    <h3>Money is integer cents, everywhere</h3>
+    <p style="font-size:13.5px">
+      Floats are the wrong type for money and it shows fast. At the real rate
+      of 1.6033, &euro;50.00 is exactly 8016.5 cents: <code>Decimal</code>
+      half-up gives CA$80.17, and naive float arithmetic gives CA$80.16. The
+      card fee is an integer too &mdash; basis points, not 0.025 &mdash;
+      because a float there sits in the middle of a figure somebody is about
+      to be charged.
+    </p>
+  </section>
+</div>
+
+<!-- ============================================================= bugs -->
+<section class="panel">
+  <h2>Bugs found, and how</h2>
+  <p class="sub">
+    Each of these was in working, green-suite code. The &ldquo;found by&rdquo;
+    column is the useful part &mdash; it says where to look next time.
+  </p>
+  <table>
+    <thead><tr><th>What was wrong</th><th>Found by</th><th class="num">State</th></tr></thead>
+    <tbody id="bugBody"></tbody>
+  </table>
+</section>
+
+<div class="split">
+  <section class="panel">
+    <h2>The part that is easy to get wrong</h2>
+    <p class="sub">
+      The ECB publishes <strong>on business days only</strong>. There are no
+      weekend rows at all, and the longest gap in the series is five days.
+    </p>
+    <table>
+      <thead><tr><th>Spent on</th><th>Rate from</th><th class="num">Lag</th><th>Why</th></tr></thead>
+      <tbody id="gapBody"></tbody>
+    </table>
+    <p class="note">
+      Both the rate date and the lag are columns in the export, so the
+      arithmetic can always be checked. It never reaches <em>forward</em>
+      either: 5&nbsp;April is one day from the 7th and three from the 2nd, but
+      the 7th had not happened when the money was spent.
+    </p>
+    <h3>A transaction and a total are different questions</h3>
+    <p style="font-size:13.5px">
+      A purchase carries a date, so converting it at a rate that did not exist
+      yet is hindsight. A month-to-date total carries none &mdash;
+      &ldquo;today&rdquo; there just means &ldquo;now&rdquo; &mdash; so the
+      honest rate is the latest published at or before now. Conflating the two
+      blanked the CAD and USD headline every weekend.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>The fee, measured rather than assumed</h2>
+    <p class="sub">
+      The foreign-transaction fee belongs to the <em>card</em>, not the
+      purchase &mdash; the same euro coffee costs 2.5% more on a CIBC Visa
+      than on a euro account &mdash; so it is stored per card and each
+      purchase is attributed to whichever card paid.
+    </p>
+    <dl class="kv" id="feeKv"></dl>
+    <p class="note">
+      It declines to answer below three priced purchases rather than dressing
+      the published figure up as an observation. A balance says how it was
+      reached too: statement figures are exact, euro purchases converted at
+      the day&rsquo;s rate are estimates, and the two are counted apart rather
+      than blended into one number that looks exact.
+    </p>
+  </section>
+</div>
+
+<!-- ======================================================== endpoints -->
+<section class="panel">
+  <h2>Endpoints</h2>
+  <p class="sub" id="routeSub"></p>
+  <table>
+    <thead><tr><th class="num">Method</th><th>Route</th><th>Does</th></tr></thead>
+    <tbody id="routeBody"></tbody>
+  </table>
+  <p class="note">
+    <code>data/</code> holds the ledger, the rate cache and
+    <code>data/receipts/</code> with every screenshot uploaded. It is
+    gitignored, along with <code>*.db</code> and <code>*.csv</code>. The
+    repository is public, so that ignore file is what stands between a real
+    ledger and the internet &mdash; a feature that writes anything derived
+    from a transaction needs a line in it, in the same commit. A folder of
+    pictures of what you bought is the most personal thing the app holds.
+  </p>
+</section>
+
+<footer>
+  <p id="footNote"></p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+
+/* Every number on this page is read from here, so the tiles, the charts and
+ * the table cannot drift apart. The previous version had its headline figures
+ * typed into the markup, and by the time anybody looked they were wrong by
+ * 411 tests and 1,361 statements.
+ *
+ * Measured 9 September 2026 with `pytest -q --cov=. --cov-report=term` and
+ * `wc -l` in the repository. Not estimated. */
+
+var MODULES = [
+  { name: 'app.py',       lines: 804, stmts: 401, missed: 0, does: 'the web front end; 34 routes in 16 small groups' },
+  { name: 'receipts.py',  lines: 482, stmts: 202, missed: 0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
+  { name: 'ledger.py',    lines: 469, stmts: 188, missed: 0, does: 'transactions, the duplicate rule, recurring detection' },
+  { name: 'cards.py',     lines: 406, stmts: 164, missed: 0, does: 'cards, their fees in basis points, and their balances' },
+  { name: 'importers.py', lines: 374, stmts: 160, missed: 0, does: 'reads a statement in whatever shape it arrives' },
+  { name: 'fxrates.py',   lines: 300, stmts: 148, missed: 0, does: 'ECB history, cached; the business-day lookback' },
+  { name: 'sources.py',   lines: 270, stmts: 116, missed: 0, does: 'the watched folder, and what it has already read' },
+  { name: 'layout.py',    lines: 266, stmts: 100, missed: 0, does: 'works out which column of a CSV is which' },
+  { name: 'db.py',        lines: 249, stmts:  39, missed: 0, does: 'six tables, and the additive migration' },
+  { name: 'goals.py',     lines: 235, stmts: 104, missed: 0, does: 'goals, derived from what the caps left over' },
+  { name: 'ofx.py',       lines: 212, stmts:  74, missed: 0, does: 'OFX/QFX, both dialects — the bank’s own rate' },
+  { name: 'budgets.py',   lines: 210, stmts:  80, missed: 0, does: 'a monthly cap per category, and pace against it' },
+  { name: 'trends.py',    lines: 201, stmts:  72, missed: 0, does: 'each category against its own average, with drilldown' },
+  { name: 'fxcost.py',    lines: 176, stmts:  49, missed: 0, does: 'what a conversion cost, and what the next will cost' },
+  { name: 'fxlive.py',    lines: 173, stmts:  75, missed: 0, does: 'the latest published rate, fetched on demand' },
+  { name: 'money.py',     lines: 166, stmts:  61, missed: 0, does: 'integer cents; the one parser and the one formatter' },
+  { name: 'upcoming.py',  lines: 160, stmts:  45, missed: 0, does: 'subscriptions: due, landed, lapsed, and price rises' },
+  { name: 'ocr.py',       lines: 152, stmts:  54, missed: 0, does: 'image to text boxes; the optional engine sits behind it' },
+  { name: 'export.py',    lines: 133, stmts:  40, missed: 0, does: 'the CSV, and whether it adds up to the ledger' },
+  { name: 'fetch.py',     lines:  52, stmts:  16, missed: 0, does: 'one way to get bytes: urllib, then curl' },
+  { name: 'paths.py',     lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' }
+];
+
+var TESTS = [
+  { file: 'test_receipts.py',    n: 87, of: 'the screenshot parser, built from real engine output' },
+  { file: 'test_app_finance.py', n: 55, of: 'routes for screenshots, rates, cards and planning' },
+  { file: 'test_cibc.py',        n: 54, of: 'the headerless CIBC exports, all three layouts' },
+  { file: 'test_cards.py',       n: 53, of: 'fees, balances, and the exact-vs-estimated split' },
+  { file: 'test_planning.py',    n: 49, of: 'trends, subscriptions and goals' },
+  { file: 'test_rate_date.py',   n: 40, of: 'weekends, Easter, Christmas, and the lookback' },
+  { file: 'test_edges.py',       n: 39, of: 'the network ladder and malformed rate files' },
+  { file: 'test_ofx.py',         n: 37, of: 'both OFX dialects and the disclosed rate' },
+  { file: 'test_money.py',       n: 37, of: 'both decimal conventions, and never a silent zero' },
+  { file: 'test_app.py',         n: 34, of: 'the original HTTP surface' },
+  { file: 'test_ledger.py',      n: 33, of: 'the duplicate rule and recurring detection' },
+  { file: 'test_sources.py',     n: 26, of: 'the watched folder, and never importing twice' },
+  { file: 'test_importers.py',   n: 26, of: 'statements in whatever shape they arrive' },
+  { file: 'test_fxlive.py',      n: 26, of: 'two rate sources, and refusing an implausible one' },
+  { file: 'test_structure.py',   n: 22, of: 'the smells, guarded structurally' },
+  { file: 'test_budgets.py',     n: 21, of: 'caps, pace and the month boundary' },
+  { file: 'test_fxrates.py',     n: 17, of: 'the ECB history and its cache' },
+  { file: 'test_frontend.py',    n: 15, of: 'escaping, the type scale, one money formatter' },
+  { file: 'test_ocr.py',         n: 14, of: 'the engine wrapper, and life without it' },
+  { file: 'test_export.py',      n: 14, of: 'the file, and whether it reconciles' }
+];
+
+/* Authored prose with intentional markup, kept out of esc() deliberately --
+ * see drawRules and drawBugs, which say so. Nothing here comes from a user. */
+var RULES = [
+  ['The <b>tallest</b> text is the amount',
+   'Whoever designed that screen made the figure large because it is the one you opened it to see. Position is a much weaker clue. Every other candidate is still offered, ranked.'],
+  ['<code>2026</code>, <code>14:32</code>, <code>4417</code> and <code>1.64321</code> are not amounts',
+   'A run of digits is money only with a currency marker or a two-decimal tail. Without that rule the year becomes a very large purchase, and the exchange rate becomes another one.'],
+  ['<code>$</code> is left unresolved',
+   'On a CIBC statement it is Canadian and on a US receipt it is not, and nothing in a screenshot settles it. Guessing is silently wrong on exactly the transactions this app exists to get right.'],
+  ['<code>07/09/2026</code> is reported as unsettled',
+   'The 7th of September to half the world and the 9th of July to the other half. Both readings are offered; neither is picked.'],
+  ['A disclosed rate wins',
+   '<code>Foreign currency 52.30 EUR @ 1.64321</code> is the bank stating what it actually did &mdash; and 52.30 &times; 1.64321 is exactly the CA$85.94 it billed.'],
+  ['<code>&bull;&bull;4417</code> is matched to a card',
+   'So the right foreign fee applies. Two cards sharing a mask match neither, because attributing a purchase to the wrong card puts the wrong fee on it.']
+];
+
+var BUGS = [
+  ['The date was never found',
+   'There is no <code>\\b</code> between the &ldquo;6&rdquo; and the &ldquo;a&rdquo; in <code>8September2026at14:32</code> &mdash; both are word characters. The engine eats spaces, so this was the common case, not an edge one.',
+   'Running the parser on real engine output', 'fixed'],
+  ['The card was never found',
+   'The engine renders <code>&bull;&bull;4417</code> as a single <code>*</code>, and the mask pattern required two.',
+   'The same run', 'fixed'],
+  ['A euro purchase reported a conversion of itself',
+   'The only amount on screen is <code>-52,30 EUR</code>; the extractor found it and called it a foreign original &mdash; which invites comparing an amount against itself and yields a confident zero-cost conversion that never happened.',
+   'Reading the output', 'fixed'],
+  ['A balance summed a signed and an unsigned figure',
+   '<code>amount_eur</code> is negative for an expense; <code>charged_minor</code> is stored as a magnitude. An exact row contributed +8594 and an estimated one &minus;572, so the balance added two purchases as though one were a refund.',
+   'A test asserting the sign', 'fixed'],
+  ['A price rise hid the subscription',
+   'Requiring every month within tolerance of one mean threw away exactly the case worth flagging &mdash; a 9.99 that became 14.99. It now accepts one price then another, with two sightings needed at each level.',
+   'Reading what <code>recurring</code> returned', 'fixed'],
+  ['Every frontend guard read one file by name',
+   'So a second script escaped all of them and shipped a duplicate money formatter and a font size outside the type scale &mdash; both things those tests exist to catch.',
+   'Adding <code>finance.js</code>', 'fixed'],
+  ['An index on a column the migration adds',
+   '<code>CREATE INDEX</code> in the schema runs before the migration, so every database made before cards existed failed to open.',
+   'Two migration tests going red', 'fixed'],
+  ['Two branches that could never run',
+   'Both guarded a case the line above had already returned on. Deleted rather than tested &mdash; an unreachable branch reads as a case somebody thought about.',
+   'Chasing the last 1% of coverage', 'removed']
+];
+
+var GAPS = [
+  ['Tue 8 Sep 2026', '8 Sep', 0, 'an ordinary weekday'],
+  ['Sun 6 Sep 2026', '4 Sep', 2, 'weekend — no rate exists'],
+  ['Sun 5 Apr 2026', '2 Apr', 3, 'Easter, the longest gap'],
+  ['Fri 26 Dec 2025', '24 Dec', 2, 'Christmas holiday']
+];
+
+var ROUTES_IN = [
+  'Snap a screenshot of the purchase. Read locally, shown for you to correct, saved only when you say so.',
+  'Point <code>WALLET_INBOX</code> at a folder your phone syncs. A bank export dropped there imports itself, and never twice.',
+  'Prefer the <code>.qfx</code> over the CSV: it carries the bank&rsquo;s own id, the currency and the exact rate it used.',
+  'Import a CSV by hand. The importer assumes no format &mdash; it sniffs the delimiter and infers the columns, even headerless.',
+  'Type it in, for cash and anything the export missed.'
+];
+
+var DOES = [
+  '<strong>Converts</strong> every purchase to CAD and USD at its own transaction-date rate.',
+  '<strong>Reads a screenshot</strong> of a purchase, locally, and asks before recording anything.',
+  '<strong>Estimates</strong> what a euro amount will bill on a given card, at today&rsquo;s published rate.',
+  '<strong>Tracks cards</strong>, each with its own currency, fee and balance.',
+  '<strong>Budgets</strong> a monthly cap per category, with spent, remaining and over-pace.',
+  '<strong>Detects duplicates</strong>, so re-importing an overlapping statement is safe.',
+  '<strong>Flags subscriptions</strong> &mdash; and says when one has quietly got dearer, with the yearly cost.',
+  '<strong>Compares each category with its own average</strong>, not with a budget, which is what catches a slow creep.',
+  '<strong>Tracks goals</strong> against what your own caps actually left over.',
+  '<strong>Reconciles</strong>: the exported rows are checked to sum to the ledger.'
+];
+
+var ROUTES = [
+  ['POST', '/api/receipt/read', 'read a screenshot — records nothing'],
+  ['POST', '/api/receipt/save', 'record the purchase you confirmed'],
+  ['GET', '/receipt/&lt;name&gt;', 'a stored screenshot, by its content digest'],
+  ['GET', '/api/rate/live', 'the latest published rate, fetched now'],
+  ['POST', '/api/rate/estimate', 'what an amount would bill on a card'],
+  ['GET POST', '/api/cards', 'cards and their balances'],
+  ['POST DELETE', '/api/cards/&lt;id&gt;', 'correct or remove one'],
+  ['GET', '/api/cards/&lt;id&gt;/measured', 'the fee its own rows actually show'],
+  ['POST', '/api/transaction/&lt;id&gt;/card', 'say which card paid'],
+  ['GET', '/api/trends', 'month by month, and this month’s movers'],
+  ['GET', '/api/trends/&lt;category&gt;', 'the purchases behind one figure'],
+  ['GET', '/api/subscriptions', 'what is due, what landed, what got dearer'],
+  ['GET POST', '/api/goals', 'goals, and what the month contributed'],
+  ['DELETE', '/api/goals/&lt;id&gt;', 'remove one'],
+  ['GET', '/api/overview', 'totals, budgets, trend, recurring, rate coverage'],
+  ['GET', '/api/transactions', 'rows, filtered by month / category / search'],
+  ['POST', '/api/transaction', 'add one by hand'],
+  ['POST', '/api/import/preview', 'what a file would do, saving nothing'],
+  ['POST', '/api/import/commit', 'actually import it'],
+  ['GET', '/api/sources', 'the watched folder, and what it has read'],
+  ['GET', '/export/transactions.csv', 'the file'],
+  ['GET', '/api/reconciles', 'does the file add up to the ledger']
+];
+
+var FEE = [
+  ['published', 'CIBC’s own figure, 250 basis points — a default to be corrected, not a fact'],
+  ['measured', '2.39–2.49% across real statements, because Visa converts at its own rate rather than the ECB’s'],
+  ['stored as', 'an integer, per card — a fee held as 0.025 puts a float in the middle of a figure somebody is about to be charged'],
+  ['a card with none', '0 is a real answer, not a missing one']
+];
+
+var RATE_HISTORY_DAYS = 7089;
+var TABLES = 6;
+var ROUTE_COUNT = 34;
+var ROUTE_GROUPS = 16;
+var TEST_LINES = 6760;
+
+/* ------------------------------------------------------------- helpers */
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function el(id) { return document.getElementById(id); }
+function covered(m) { return m.stmts - m.missed; }
+function coverage(m) { return Math.round(100 * covered(m) / m.stmts); }
+function sum(list, field) {
+  return list.reduce(function (n, item) { return n + field(item); }, 0);
+}
+
+var STMTS = sum(MODULES, function (m) { return m.stmts; });
+var COVERED = sum(MODULES, covered);
+var LINES = sum(MODULES, function (m) { return m.lines; });
+var TEST_COUNT = sum(TESTS, function (t) { return t.n; });
+
+/* ---------------------------------------------------------------- tiles */
+
+function drawTiles() {
+  var tiles = [
+    ['Tests', TEST_COUNT.toLocaleString(),
+     TESTS.length + ' files, ' + TEST_LINES.toLocaleString() + ' lines'],
+    ['Coverage', Math.round(100 * COVERED / STMTS) + '%',
+     COVERED.toLocaleString() + ' of ' + STMTS.toLocaleString() + ' statements'],
+    ['Modules', MODULES.length,
+     LINES.toLocaleString() + ' lines of source'],
+    ['Endpoints', ROUTE_COUNT,
+     ROUTE_GROUPS + ' groups, ' + TABLES + ' tables'],
+    ['Rate history', RATE_HISTORY_DAYS.toLocaleString(),
+     'business days, from 1999']
+  ];
+  el('tiles').innerHTML = tiles.map(function (t) {
+    return '<div class="tile"><span class="k">' + esc(t[0]) +
+      '</span><strong class="v">' + esc(t[1]) + '</strong>' +
+      '<span class="n">' + esc(t[2]) + '</span></div>';
+  }).join('');
+
+  el('tilesNote').textContent =
+    'There are more lines of test than of source — ' +
+    TEST_LINES.toLocaleString() + ' against ' + LINES.toLocaleString() +
+    ' — which is the ratio this project has settled at. The suite is not ' +
+    'there for the percentage: every assertion in it is something that was ' +
+    'got wrong first. The one exclusion from coverage is the ' +
+    'if-name-is-main block, which starts a server and blocks, so no test can ' +
+    'execute it; it is verified by running the app.';
+}
+
+/* --------------------------------------------------------------- charts */
+
+function drawBars(id, rows, label, value, size, peak) {
+  el(id).innerHTML = rows.map(function (row) {
+    var width = (size(row) / peak * 100).toFixed(1);
+    return '<div class="bar" title="' + esc(label(row) + ' — ' + value(row)) +
+      '"><span class="lab">' + esc(label(row)) + '</span>' +
+      '<span class="rail"><span class="fill" style="width:' + width +
+      '%"></span></span>' +
+      '<span class="val">' + esc(value(row)) + '</span></div>';
+  }).join('');
+}
+
+/* Sorted here rather than relied on in the array. The caption says "largest
+ * first" and the array happened to be in line-count order, so db.py (39
+ * statements) sat above goals.py (104) under a caption saying it would not. */
+function byStatements() {
+  return MODULES.slice().sort(function (a, b) { return b.stmts - a.stmts; });
+}
+
+function drawModules() {
+  var rows = byStatements();
+  var peak = rows[0].stmts;
+  el('moduleSub').textContent =
+    'By executable statements, largest first. One measure, so one colour and ' +
+    'no legend — the heading names it, and every bar is labelled directly. ' +
+    'The widest is ' + rows[0].name + ' at ' + rows[0].stmts +
+    ', and all ' + MODULES.length + ' are fully covered.';
+  drawBars('moduleBars', rows,
+           function (m) { return m.name; },
+           function (m) { return m.stmts + ' · ' + coverage(m) + '%'; },
+           function (m) { return m.stmts; }, peak);
+}
+
+function drawTests() {
+  var peak = Math.max.apply(null, TESTS.map(function (t) { return t.n; }));
+  var most = TESTS.reduce(function (a, b) { return b.n > a.n ? b : a; });
+  el('testSub').textContent =
+    'The heaviest file is ' + most.file + ' at ' + most.n + ' — ' + most.of +
+    '. It needs no OCR engine to run, which is the whole reason the parser ' +
+    'and the engine are separate modules.';
+  drawBars('testBars', TESTS,
+           function (t) { return t.file.replace('test_', '').replace('.py', ''); },
+           function (t) { return String(t.n); },
+           function (t) { return t.n; }, peak);
+}
+
+/* --------------------------------------------------------------- tables */
+
+function drawTable() {
+  /* Same order as the chart, so the two views of one dataset agree. */
+  var rows = byStatements().map(function (m) {
+    return '<tr><td class="mono">' + esc(m.name) + '</td>' +
+      '<td class="num">' + m.lines + '</td>' +
+      '<td class="num">' + m.stmts + '</td>' +
+      '<td class="num">' + coverage(m) + '%</td>' +
+      '<td>' + esc(m.does) + '</td></tr>';
+  }).join('');
+  el('tableBody').innerHTML = rows +
+    '<tr class="total"><td>Total</td><td class="num">' +
+    LINES.toLocaleString() + '</td><td class="num">' +
+    STMTS.toLocaleString() + '</td><td class="num">' +
+    Math.round(100 * COVERED / STMTS) + '%</td><td>&mdash;</td></tr>';
+}
+
+/* RULES, BUGS, ROUTES_IN and DOES are authored in this file and carry
+ * intentional markup, so they are written through rather than escaped. No
+ * value in any of them comes from a database, a bank file or a person. */
+function drawRules() {
+  el('rulesBody').innerHTML = RULES.map(function (r) {
+    return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>';
+  }).join('');
+}
+
+function drawBugs() {
+  var flags = { fixed: ['good', '✓', 'fixed'],
+                removed: ['good', '✓', 'removed'] };
+  el('bugBody').innerHTML = BUGS.map(function (b) {
+    var f = flags[b[3]];
+    return '<tr><td><b>' + b[0] + '</b><br>' + b[1] + '</td>' +
+      '<td>' + b[2] + '</td>' +
+      '<td class="num"><span class="flag ' + f[0] + '"><span class="g">' +
+      f[1] + '</span>' + esc(f[2]) + '</span></td></tr>';
+  }).join('');
+}
+
+function drawGaps() {
+  el('gapBody').innerHTML = GAPS.map(function (g) {
+    return '<tr><td class="mono">' + esc(g[0]) + '</td>' +
+      '<td class="mono">' + esc(g[1]) + '</td>' +
+      '<td class="num">' + g[2] + '</td><td>' + esc(g[3]) + '</td></tr>';
+  }).join('');
+}
+
+function drawFee() {
+  el('feeKv').innerHTML = FEE.map(function (f) {
+    return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>';
+  }).join('');
+}
+
+function drawRoutesIn() {
+  el('routesIn').innerHTML = ROUTES_IN.map(function (text, index) {
+    var n = index + 1;
+    return '<li><span class="step">' + (n < 10 ? '0' + n : n) +
+      '</span><span>' + text + '</span></li>';
+  }).join('');
+  el('cibcNote').textContent =
+    'There is no CIBC sync, and three routes to one were checked before ' +
+    'accepting that: open banking has Royal Assent but no operational date, ' +
+    'CIBC supports Web Connect only rather than OFX Direct Connect, and the ' +
+    'aggregators that reach Canadian banks either need a commercial ' +
+    'agreement or log in on your behalf, which breaches CIBC’s own terms.';
+}
+
+function drawDoes() {
+  el('doesList').innerHTML = DOES.map(function (text) {
+    return '<li><span class="step">&rarr;</span><span>' + text +
+      '</span></li>';
+  }).join('');
+}
+
+function drawRoutes() {
+  el('routeSub').textContent =
+    ROUTE_COUNT + ' routes in ' + ROUTE_GROUPS + ' registration groups, none ' +
+    'over cyclomatic complexity 10 — as one function the factory measured 40. ' +
+    'Loopback only, debug off. The newest are listed first.';
+  el('routeBody').innerHTML = ROUTES.map(function (r) {
+    return '<tr><td class="num mono">' + esc(r[0]) + '</td>' +
+      '<td class="mono">' + r[1] + '</td><td>' + esc(r[2]) + '</td></tr>';
+  }).join('');
+}
+
+function drawSamples() {
+  el('ocrSample').textContent = [
+    "y=  80 h= 20 conf=0.81  'REWE SAGTDANKE'           <- the space is gone",
+    "y= 188 h= 34 conf=0.83  '-52,30 EUR'               <- tallest: the amount",
+    "y= 237 h= 14 conf=0.90  '8September2026at14:32'    <- runs into the time",
+    "y= 305 h= 12 conf=0.84  'CIBC Dividend Visa *4417' <- two bullets, one star",
+    "",
+    "  amount    52.30 EUR       date  2026-09-08  (unambiguous)",
+    "  merchant  REWE SAGTDANKE  card  CIBC Dividend Visa ..4417",
+    "  needs     nothing - every field settled"
+  ].join('\n');
+
+  el('estimateSample').textContent = [
+    "€52.30 at 1.6043            CA$83.90",
+    "CIBC Dividend Visa, 2.50%    +CA$2.10",
+    "you would be charged        CA$86.00      all-in rate 1.6444",
+    "",
+    "published 2026-09-09 · fetched 15:11 · a daily reference rate"
+  ].join('\n');
+
+  el('validationNote').textContent =
+    'The model checks itself against a real statement: the ECB rate plus ' +
+    '2.5% predicts CA$86.00 where CIBC actually billed CA$85.94, six cents ' +
+    'apart. And the bank’s own disclosed rate reproduces its figure exactly ' +
+    '— 52.30 × 1.64321 is CA$85.94 to the cent, which is what makes the ' +
+    '.qfx worth preferring over the CSV.';
+}
+
+/* -------------------------------------------------------------- controls */
+
+el('themeBtn').addEventListener('click', function () {
+  var set = document.documentElement.getAttribute('data-theme');
+  var dark = set ? set === 'dark'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+});
+
+el('tableBtn').addEventListener('click', function () {
+  var showTable = el('tablePanel').hidden;
+  el('tablePanel').hidden = !showTable;
+  el('modulePanel').hidden = showTable;
+  el('testPanel').hidden = showTable;
+  this.setAttribute('aria-pressed', String(showTable));
+  this.textContent = showTable ? 'Chart view' : 'Table view';
+});
+
+el('footNote').textContent =
+  'Figures measured on 9 September 2026 with pytest --cov and wc -l in the ' +
+  'repository, not estimated. Everything here is read from one data block, ' +
+  'so the tiles, the charts and the table cannot disagree — the previous ' +
+  'version had them typed into the markup and they were wrong by 411 tests. ' +
+  'The app itself is not hosted anywhere: it runs on 127.0.0.1:5004 on ' +
+  'your own machine and keeps nothing outside it. This page is just the ' +
+  'write-up.';
+
+drawTiles();
+drawModules();
+drawTests();
+drawTable();
+drawRules();
+drawBugs();
+drawGaps();
+drawFee();
+drawRoutesIn();
+drawDoes();
+drawRoutes();
+drawSamples();
+</script>
+</body>
+</html>
