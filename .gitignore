@@ -1,0 +1,30 @@
+# Your financial data. This is the important line in this file.
+#
+# data/ holds wallet.db -- every purchase, with dates, merchants and amounts --
+# and fx_rates.csv, which is derived. Neither belongs in a repository, and the
+# first one belongs in a public one least of all. If you add a feature that
+# writes anything derived from a transaction, add it here in the same commit.
+data/
+*.db
+*.csv
+
+# ...except the sample, which is invented and is there so a clone has
+# something to import.
+!sample-statement.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Test artefacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Editors
+.DS_Store
+.idea/
+.vscode/

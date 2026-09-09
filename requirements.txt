@@ -1,0 +1,7 @@
+# The web front end. Capped below the next major: Flask 3 is what this has
+# been run against, and a major bump is a thing to adopt deliberately rather
+# than by being the next person to install.
+Flask>=3.0,<4
+
+# Tests only.
+pytest>=7.4,<10

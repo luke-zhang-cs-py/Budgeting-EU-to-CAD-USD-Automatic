@@ -1,0 +1,245 @@
+/* One type scale and one palette, both declared here.
+ *
+ * The transit app in this family grew a second scale and a second palette by
+ * accident -- a 10px label in the body font among 11.5px monospace figures,
+ * and a legend gradient three shades off the map it explained. Everything
+ * here reads from these variables so that cannot happen quietly.
+ *
+ * Every figure is IBM Plex Mono: money in a proportional font makes columns
+ * fail to line up, which is the one thing a column of money must do. */
+
+:root {
+  --bg: #12141a;
+  --panel: #1a1d26;
+  --panel-2: #21252f;
+  --line: #2c313d;
+  --ink: #e8eaf0;
+  --ink-dim: #9aa2b4;
+  --ink-faint: #6b7387;
+
+  --accent: #6ea8fe;
+  --fine: #4bbd8a;
+  --close: #e8b04b;
+  --over: #e8695d;
+  --untracked: #7c839a;
+
+  --text: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --t-small: 11.5px;
+  --t-body: 12.5px;
+  --t-mid: 14px;
+  --t-big: 22px;
+
+  --radius: 8px;
+  --gap: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 var(--t-body)/1.5 var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------------------------------------------ head */
+
+.top {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--gap); flex-wrap: wrap;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brand h1 { margin: 0; font-size: var(--t-big); font-weight: 600; letter-spacing: -0.2px; }
+.sub { margin: 2px 0 0; color: var(--ink-dim); font-size: var(--t-small); }
+.topRight { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------- totals */
+
+.totals {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px; background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.total { background: var(--panel); padding: 14px 18px; }
+.total .label {
+  display: block; color: var(--ink-dim); font-size: var(--t-small);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.figure {
+  display: block; margin-top: 4px;
+  font: 500 var(--t-big)/1.25 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.figure.over { color: var(--over); }
+.figure.fine { color: var(--fine); }
+
+/* ----------------------------------------------------------------- cards */
+
+main { padding: var(--gap) 22px 30px; display: grid; gap: var(--gap); }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--gap); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 18px;
+}
+.card h2 {
+  margin: 0 0 10px; font-size: var(--t-mid); font-weight: 600;
+}
+.cardHead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--gap); flex-wrap: wrap; margin-bottom: 10px;
+}
+.cardHead h2 { margin: 0; }
+.hint { margin: 8px 0 0; color: var(--ink-faint); font-size: var(--t-small); }
+
+/* ----------------------------------------------------------------- forms */
+
+.row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+.field.grow { flex: 1 1 220px; }
+.field.compact { min-width: 108px; }
+.field > span {
+  color: var(--ink-dim); font-size: var(--t-small);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+input, select, button, .button {
+  font: 400 var(--t-body) var(--text);
+  background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 10px;
+}
+/* Anything numeric is monospace and tabular, in the form as well as the
+ * table, so what you type lines up with what comes back. */
+input[inputmode="decimal"], input[type="date"], select#month {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+button, .button {
+  cursor: pointer; background: var(--accent); border-color: var(--accent);
+  color: #0d1017; font-weight: 500; text-decoration: none;
+}
+button:hover, .button:hover { filter: brightness(1.08); }
+button.ghost, .ghost.button {
+  background: var(--panel-2); border-color: var(--line); color: var(--ink);
+  font-weight: 400;
+}
+.search { min-width: 150px; }
+.check { display: flex; align-items: center; gap: 6px; color: var(--ink-dim); font-size: var(--t-small); }
+.check input { padding: 0; }
+
+/* --------------------------------------------------------------- budgets */
+
+.budgets { display: grid; gap: 10px; }
+.budget { display: grid; gap: 6px; }
+.budgetTop {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+}
+.budgetName { font-weight: 500; }
+.budgetFigures {
+  font-family: var(--mono); font-size: var(--t-small);
+  font-variant-numeric: tabular-nums; color: var(--ink-dim);
+}
+.bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: 3px; }
+.bar.fine > span { background: var(--fine); }
+.bar.close > span { background: var(--close); }
+.bar.over > span { background: var(--over); }
+.bar.untracked > span { background: var(--untracked); }
+
+.tag {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
+  text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line); color: var(--ink-dim);
+}
+.tag.over { color: var(--over); border-color: var(--over); }
+.tag.close { color: var(--close); border-color: var(--close); }
+.tag.under { color: var(--fine); border-color: var(--fine); }
+
+/* --------------------------------------------------------------- tables */
+
+.grid { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.grid th, .grid td {
+  text-align: left; padding: 7px 8px;
+  border-bottom: 1px solid var(--line); vertical-align: middle;
+}
+.grid th {
+  color: var(--ink-dim); font-size: var(--t-small); font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.grid td { font-size: var(--t-body); }
+/* Dates, amounts and rates are all figures. */
+.grid td.num, .grid th.num { text-align: right; }
+.grid td.num, .grid td.date, .grid td.rate {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: var(--t-small);
+}
+.grid td.rate { color: var(--ink-faint); }
+.grid tr:hover td { background: var(--panel-2); }
+.grid.compact td, .grid.compact th { padding: 5px 8px; }
+.grid select { padding: 3px 6px; font-size: var(--t-small); }
+.money.out { color: var(--ink); }
+.money.in { color: var(--fine); }
+.lag { color: var(--close); }
+
+.iconButton {
+  background: none; border: none; color: var(--ink-faint);
+  cursor: pointer; padding: 2px 6px; font-size: var(--t-mid);
+}
+.iconButton:hover { color: var(--over); }
+
+/* ---------------------------------------------------------------- lists */
+
+.rules { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.rules li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; font-size: var(--t-small);
+}
+.rules .keyword { font-family: var(--mono); }
+.rules .amount {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+.empty { color: var(--ink-faint); font-size: var(--t-small); }
+
+.problems { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.problems li {
+  color: var(--close); font-size: var(--t-small); font-family: var(--mono);
+}
+
+.mapping { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+
+/* ---------------------------------------------------------------- trend */
+
+.trend { display: grid; gap: 6px; }
+.trendRow { display: grid; grid-template-columns: 62px 1fr 92px; gap: 10px; align-items: center; }
+.trendRow .m, .trendRow .v {
+  font-family: var(--mono); font-size: var(--t-small);
+  font-variant-numeric: tabular-nums; color: var(--ink-dim);
+}
+.trendRow .v { text-align: right; color: var(--ink); }
+.trendBar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.trendBar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+/* --------------------------------------------------------------- notice */
+
+.notice {
+  margin: 0; padding: 9px 22px; font-size: var(--t-small);
+  background: #2a2118; color: var(--close);
+  border-bottom: 1px solid var(--line);
+}
+.notice.good { background: #16281f; color: var(--fine); }
+.notice.bad { background: #2b1a18; color: var(--over); }
+
+.foot {
+  display: flex; justify-content: space-between; gap: var(--gap);
+  flex-wrap: wrap; padding: 12px 22px 24px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint); font-family: var(--mono); font-size: var(--t-small);
+}

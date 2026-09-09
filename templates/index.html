@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet — euros to CAD and USD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Wallet</h1>
+    <p class="sub">Euro spending, in Canadian and US dollars</p>
+  </div>
+  <div class="topRight">
+    <label class="field compact">
+      <span>Month</span>
+      <select id="month"></select>
+    </label>
+    <button id="refreshRates" class="ghost" type="button">Refresh rates</button>
+  </div>
+</header>
+
+<!-- The three figures the whole app exists to produce. -->
+<section class="totals">
+  <div class="total">
+    <span class="label">Spent this month</span>
+    <strong class="figure" id="spentEur">—</strong>
+  </div>
+  <div class="total">
+    <span class="label">In Canadian dollars</span>
+    <strong class="figure" id="spentCad">—</strong>
+  </div>
+  <div class="total">
+    <span class="label">In US dollars</span>
+    <strong class="figure" id="spentUsd">—</strong>
+  </div>
+  <div class="total">
+    <span class="label" id="leftLabel">Left to spend</span>
+    <strong class="figure" id="remaining">—</strong>
+  </div>
+</section>
+
+<p class="notice" id="notice" hidden></p>
+
+<main>
+
+<!-- ------------------------------------------------------------ budgets -->
+<section class="card">
+  <div class="cardHead">
+    <h2>Budgets</h2>
+    <span class="hint" id="daysLeft"></span>
+  </div>
+  <div id="budgetList" class="budgets"></div>
+
+  <form id="budgetForm" class="row">
+    <label class="field">
+      <span>Category</span>
+      <input id="budgetCategory" list="categoryList" placeholder="Groceries" required>
+    </label>
+    <label class="field">
+      <span>Cap per month (EUR)</span>
+      <input id="budgetCap" inputmode="decimal" placeholder="400" required>
+    </label>
+    <button type="submit">Set cap</button>
+  </form>
+  <p class="hint">A cap of 0 removes it.</p>
+</section>
+
+<!-- -------------------------------------------------------- add spending -->
+<section class="card">
+  <h2>Add spending</h2>
+  <form id="addForm" class="row">
+    <label class="field">
+      <span>Date</span>
+      <input id="addDate" type="date" required>
+    </label>
+    <label class="field grow">
+      <span>What was it</span>
+      <input id="addDescription" placeholder="Coffee" required>
+    </label>
+    <label class="field">
+      <span>Amount (EUR)</span>
+      <input id="addAmount" inputmode="decimal" placeholder="3,50" required>
+    </label>
+    <label class="field">
+      <span>Category</span>
+      <input id="addCategory" list="categoryList" placeholder="optional">
+    </label>
+    <label class="field">
+      <span>Kind</span>
+      <select id="addKind">
+        <option value="expense">Spending</option>
+        <option value="income">Income</option>
+      </select>
+    </label>
+    <button type="submit">Add</button>
+  </form>
+  <p class="hint">Type it as a positive number — spending is taken as money out.</p>
+</section>
+
+<!-- ------------------------------------------------------------- import -->
+<section class="card">
+  <h2>Import a statement</h2>
+  <p class="hint">
+    Apple Wallet and Google Wallet have no export, so take the CSV from the
+    bank or card behind them. Nothing is saved until you confirm.
+  </p>
+  <form id="importForm" class="row">
+    <label class="field grow">
+      <span>CSV file</span>
+      <input id="importFile" type="file" accept=".csv,text/csv,text/plain">
+    </label>
+    <button type="submit" class="ghost">Preview</button>
+  </form>
+
+  <div id="importPreview" hidden>
+    <div id="mappingRow" class="mapping"></div>
+    <p class="hint" id="previewSummary"></p>
+    <table class="grid compact">
+      <thead><tr><th>Date</th><th>Description</th><th class="num">EUR</th></tr></thead>
+      <tbody id="previewBody"></tbody>
+    </table>
+    <ul class="problems" id="previewProblems"></ul>
+    <div class="row">
+      <label class="check">
+        <input type="checkbox" id="useFileCategories">
+        <span>Use the categories in the file</span>
+      </label>
+      <button type="button" id="importConfirm">Import these</button>
+      <button type="button" id="importCancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------- transactions -->
+<section class="card">
+  <div class="cardHead">
+    <h2>Transactions</h2>
+    <div class="topRight">
+      <input id="search" class="search" placeholder="Search" type="search">
+      <a id="downloadCsv" class="ghost button" href="#">Download CSV</a>
+      <a id="downloadSummary" class="ghost button" href="#">Budget CSV</a>
+    </div>
+  </div>
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Date</th><th>Description</th><th>Category</th>
+        <th class="num">EUR</th><th class="num">CAD</th><th class="num">USD</th>
+        <th>Rate used</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="txBody"></tbody>
+  </table>
+  <p class="hint" id="txNote"></p>
+</section>
+
+<div class="split">
+  <!-- ------------------------------------------------------------ rules -->
+  <section class="card">
+    <h2>Auto-categorise</h2>
+    <p class="hint">A word in the description picks the category. Applied to
+      rows already imported, not just new ones.</p>
+    <form id="ruleForm" class="row">
+      <label class="field grow">
+        <span>If it contains</span>
+        <input id="ruleKeyword" placeholder="netflix" required>
+      </label>
+      <label class="field">
+        <span>Category</span>
+        <input id="ruleCategory" list="categoryList" placeholder="Entertainment" required>
+      </label>
+      <button type="submit">Add rule</button>
+    </form>
+    <ul class="rules" id="ruleList"></ul>
+  </section>
+
+  <!-- ------------------------------------------------------- recurring -->
+  <section class="card">
+    <h2>Looks recurring</h2>
+    <p class="hint">Same merchant, similar amount, three months or more.
+      Flagged only — nothing is hidden from your totals.</p>
+    <ul class="rules" id="recurringList"></ul>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Spending by month</h2>
+  <div id="trend" class="trend"></div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span id="rateInfo">—</span>
+  <span id="reconcile"></span>
+</footer>
+
+<datalist id="categoryList"></datalist>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

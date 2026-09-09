@@ -1,0 +1,15 @@
+# Normalise line endings in the repository to LF, and check out whatever is
+# native to the machine. Without this, committing from Windows stores CRLF,
+# which shows up as a whole-file diff the first time anyone edits on Linux
+# or in CI -- and git prints a warning on every add.
+* text=auto
+
+# Binary, so never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pb binary
+*.zip binary
+*.joblib binary
+*.db binary
