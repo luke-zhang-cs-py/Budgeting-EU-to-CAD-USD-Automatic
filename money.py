@@ -74,7 +74,15 @@ def parse(text):
     negative = raw.startswith("-") or (raw.startswith("(") and raw.endswith(")"))
     cleaned = _CLEAN.sub("", raw).lstrip("+-")
 
-    if not cleaned:
+    # At least one digit, not merely at least one character.
+    #
+    # This tested `not cleaned`, and cleaned keeps separators -- so "." and
+    # ",," and "EUR ," all got past it, fell through the whole-part guard with
+    # an empty whole, and came back as 0. A silent zero, which is the one thing
+    # MoneyError exists to prevent: the row imports, reports "added", and the
+    # purchase is missing from every total while the budget says there is money
+    # left. A bank CSV with a punctuation-only amount cell did exactly that.
+    if not any(character.isdigit() for character in cleaned):
         raise MoneyError(f"no digits in {text!r}")
 
     last_comma = cleaned.rfind(",")

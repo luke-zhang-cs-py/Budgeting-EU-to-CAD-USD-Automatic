@@ -1,3 +1,12 @@
 [run]
 omit =
     tests/*
+
+[report]
+exclude_lines =
+    # Re-enable the default, which naming exclude_lines otherwise replaces.
+    pragma: no cover
+
+    # The script entry point. It starts a server and blocks, so a test cannot
+    # execute it; it is verified by running the app, not by importing it.
+    if __name__ == .__main__.:

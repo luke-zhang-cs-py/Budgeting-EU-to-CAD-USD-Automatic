@@ -234,13 +234,28 @@ def rate(on, currency, directory=None):
 
     if isinstance(on, dt.datetime):
         on = on.date()
-    newest = max(rates)
-    if on > newest:
-        # A purchase dated after the last published rate. Refusing is the
-        # honest answer: converting tomorrow's spending at today's rate is a
-        # guess, and a tracker that guesses is worse than one that says wait.
-        raise RateError(f"{on} is later than the newest rate ({newest}); "
-                        f"refresh, or check the transaction date")
+    # A date past the newest rate is refused only if a rate for it could still
+    # arrive -- which is to say, only on a weekday.
+    #
+    # Refusing is right when the real rate is merely late: converting a
+    # purchase dated next Tuesday at last Friday's rate is a guess, and it
+    # would be silently replaced once Tuesday publishes. But the same test
+    # caught something whose rate is never coming. A purchase made on Sunday
+    # is later than Friday's rate, so it was refused, and stayed refused until
+    # Monday published -- waiting on a Sunday rate the ECB does not produce.
+    # Anyone entering a purchase on the weekend it happened saw no CAD or USD
+    # figure for it at all.
+    #
+    # Asking whether the date is a weekend, rather than whether it is in the
+    # future, keeps both answers right and keeps this function free of the
+    # wall clock. A conversion that consulted today's date would return
+    # different figures depending on when it ran, which is a worse fault than
+    # the one being fixed here: it makes every result unreproducible.
+    newest_published = max(rates)
+    if on > newest_published and on.weekday() < 5:
+        raise RateError(f"{on} is later than the newest rate "
+                        f"({newest_published}); refresh, or check the "
+                        f"transaction date")
 
     for back in range(MAX_LOOKBACK_DAYS + 1):
         day = on - dt.timedelta(days=back)

@@ -293,3 +293,35 @@ def test_the_server_binds_loopback_by_default(monkeypatch):
 
 def test_an_oversized_upload_is_capped():
     assert web.MAX_UPLOAD_BYTES <= 16 * 1024 * 1024
+
+
+# ------------------------------------------------- the last failure branches
+
+def test_committing_an_import_with_no_file_is_a_400(client):
+    """The commit route has its own copy of the upload failure path; only the
+    preview route's was exercised, so a broken commit would have surfaced as a
+    500 rather than a message."""
+    reply = client.post("/api/import/commit", data={},
+                        content_type="multipart/form-data")
+    assert reply.status_code == 400
+    assert "error" in reply.get_json()
+
+
+def test_an_uploaded_file_with_no_bytes_says_so(client):
+    """A zero-byte file is a different mistake from choosing no file, and the
+    reason has to distinguish them or the user re-picks the same empty file."""
+    reply = client.post(
+        "/api/import/preview",
+        data={"file": (io.BytesIO(b""), "empty.csv")},
+        content_type="multipart/form-data")
+    assert reply.status_code == 400
+    assert reply.get_json()["error"] == "the file is empty"
+
+
+def test_a_negative_cap_is_refused_by_the_api(client):
+    """money.parse reads "-100" happily -- it is a real amount. The refusal
+    comes from budgets.set_cap, and that branch had no test, so a negative cap
+    would have been a 500 instead of a message."""
+    reply = post(client, "/api/budget", category="Groceries", cap="-100")
+    assert reply.status_code == 400
+    assert "negative" in reply.get_json()["error"]

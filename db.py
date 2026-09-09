@@ -15,6 +15,7 @@ counted twice, so every total and every budget is wrong in a way that looks
 like overspending. Enforcing it in the database rather than in Python means
 it holds no matter which code path does the inserting.
 """
+import contextlib
 import os
 import sqlite3
 import threading
@@ -66,6 +67,23 @@ def db_path(directory=None):
     forced the database and the rate cache to agree on a location.
     """
     return os.path.join(paths.data_dir(directory), DB_NAME)
+
+
+@contextlib.contextmanager
+def session(directory=None):
+    """A connection that is actually closed when the block ends.
+
+    `with sqlite3.connect(...) as conn:` looks like it closes and does not --
+    sqlite3's context manager scopes a *transaction*, committing or rolling
+    back, and leaves the connection open. Every request therefore leaked one,
+    which pytest reported as `ResourceWarning: unclosed database` thirty-six
+    times a run. A server left up long enough runs out of file handles.
+    """
+    connection = connect(directory)
+    try:
+        yield connection
+    finally:
+        connection.close()
 
 
 def connect(directory=None):

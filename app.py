@@ -49,9 +49,15 @@ class Context:
         self.directory = directory
 
     def connect(self):
-        """One connection per request. sqlite3 objects are not shareable
-        across threads and Flask serves each request on its own."""
-        return db.connect(self.directory)
+        """One connection per request, closed when the block ends.
+
+        sqlite3 objects are not shareable across threads and Flask serves each
+        request on its own, so a connection per request is right. This used to
+        hand back db.connect() directly, and `with` on a sqlite3 connection
+        scopes a transaction rather than closing it -- so every request leaked
+        one. db.session closes.
+        """
+        return db.session(self.directory)
 
     def month(self):
         return request.args.get("month") or dt.date.today().strftime("%Y-%m")
