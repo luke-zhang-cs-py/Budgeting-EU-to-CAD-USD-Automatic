@@ -27,6 +27,20 @@ import paths      # noqa: E402
 MODULES = (money, paths, db, fxrates, ledger, importers, budgets, export)
 
 
+def _code_of(module):
+    """A module's source with docstrings and comments removed.
+
+    Structural tests that grep raw source keep failing on prose that describes
+    the very thing being searched for -- three separate times while auditing
+    these projects. Stripping first is the fix, and it belongs in one helper
+    rather than in each test that needs it.
+    """
+    source = inspect.getsource(module)
+    source = re.sub(r'"""(?:.|\n)*?"""', "", source)
+    source = re.sub(r"'''(?:.|\n)*?'''", "", source)
+    return re.sub(r"#[^\n]*", "", source)
+
+
 @pytest.fixture(autouse=True)
 def fresh():
     fxrates.reset()
@@ -162,11 +176,16 @@ def test_no_module_reaches_into_another_private_name():
     boundary is inappropriate intimacy."""
     names = [m.__name__ for m in MODULES]
     for module in MODULES:
-        source = inspect.getsource(module)
+        # Code only. A docstring that names another module's private function
+        # in order to explain a decision is documentation, not a dependency --
+        # and this test failed on exactly that: fxrates.newest says "see
+        # budgets._converted_total", which is the cross-reference a reader
+        # wants. Its sibling test already strips prose for the same reason.
+        code = _code_of(module)
         for other in names:
             if other == module.__name__:
                 continue
-            found = re.findall(rf"\b{other}\._[a-z]", source)
+            found = re.findall(rf"\b{other}\._[a-z]", code)
             assert not found, f"{module.__name__} reaches into {other}: {found}"
 
 

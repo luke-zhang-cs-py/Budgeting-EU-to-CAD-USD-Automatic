@@ -209,3 +209,31 @@ def test_a_month_with_nothing_in_it_is_zero_not_an_error(conn):
     assert out["spent_eur"] == 0
     assert out["budgeted_eur"] is None
     assert budgets.status(conn, "2026-01") == []
+
+
+def test_the_month_total_converts_on_a_weekend(conn):
+    """The headline figures must not go blank two days in seven.
+
+    A transaction carries a date, so fxrates refuses to convert one dated
+    later than the newest published rate -- that would be hindsight. A
+    month-to-date total carries no date: "today" means "now", so it clamps to
+    the latest rate published at or before now.
+
+    Before this, viewing the page on any Saturday, Sunday, public holiday, or
+    weekday morning before the ECB publishes showed an empty CAD and USD
+    total, on a screen that exists to show those two numbers.
+    """
+    spend(conn, 2, "TESCO", 10000, "Groceries")
+    # The fixture's newest rate is Saturday 2026-02-28; view it on the Sunday.
+    out = budgets.summary(conn, "2026-02", today=dt.date(2026, 3, 2))
+    assert out["spent_cad_text"] == "CA$160.33"
+    assert out["spent_usd_text"] == "US$116.14"
+    assert out["rate_date"] == "2026-02-28"
+
+
+def test_a_future_dated_transaction_is_still_refused(conn):
+    """The clamp is only for totals. A purchase dated after the last published
+    rate stays unconvertible, because that one really is a guess."""
+    import fxrates
+    with pytest.raises(fxrates.RateError):
+        fxrates.rate(dt.date(2027, 1, 1), "CAD")

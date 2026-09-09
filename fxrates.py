@@ -284,6 +284,16 @@ def convert_all(cents, on, directory=None):
     return out
 
 
+def newest(directory=None):
+    """The most recent date the cache holds a rate for, or None.
+
+    Exists so a caller converting "now" rather than a dated transaction can
+    clamp to what has actually been published. See budgets._converted_total.
+    """
+    rates = load(directory)
+    return max(rates) if rates else None
+
+
 def coverage(directory=None):
     """What the cache holds, for the page footer and for tests."""
     rates = load(directory)

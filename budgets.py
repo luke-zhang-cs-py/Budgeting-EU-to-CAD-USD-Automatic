@@ -173,6 +173,23 @@ def _converted_total(spent, month, today=None, directory=None):
     """
     out = {"rate_date": ""}
     on = _last_day_seen(month, today)
+
+    # Clamped to what has actually been published, which a *total* may do and a
+    # transaction may not.
+    #
+    # A purchase carries a date, so converting it at a rate that did not exist
+    # when the money was spent is hindsight and fxrates rightly refuses it. A
+    # month-to-date total carries no date -- "today" here just means "now" --
+    # so the honest rate is the latest one published at or before now.
+    #
+    # Without this the CAD and USD headline figures went blank every weekend,
+    # every public holiday, and every morning before the ECB publishes around
+    # 16:00 CET: roughly two days in seven, on a screen whose whole purpose is
+    # those two figures. Found by running the app rather than by reading it.
+    published = fxrates.newest(directory)
+    if published and on > published:
+        on = published
+
     for currency, result in fxrates.convert_all(spent, on, directory).items():
         key = currency.lower()
         out[f"spent_{key}"] = result["cents"]
