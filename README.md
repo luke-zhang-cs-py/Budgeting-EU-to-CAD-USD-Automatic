@@ -1,6 +1,6 @@
 # Wallet — euro spending in CAD and USD
 
-[![CI](https://github.com/luke-zhang-cs-py/wallet-fx-budget/actions/workflows/python-package.yml/badge.svg)](https://github.com/luke-zhang-cs-py/wallet-fx-budget/actions/workflows/python-package.yml)
+[![CI](https://github.com/luke-zhang-cs-py/Budgeting-EU-to-CAD-USD-Automatic/actions/workflows/python-package.yml/badge.svg)](https://github.com/luke-zhang-cs-py/Budgeting-EU-to-CAD-USD-Automatic/actions/workflows/python-package.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue.svg)](https://www.python.org/)
 
