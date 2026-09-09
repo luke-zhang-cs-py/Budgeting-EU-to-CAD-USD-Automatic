@@ -40,8 +40,11 @@ import paths
 ENV_VAR = "WALLET_INBOX"
 DEFAULT_DIRNAME = "inbox"
 
-# Anything else in a synced folder is not a bank export.
-SUFFIXES = (".csv", ".txt", ".tsv")
+# Anything else in a synced folder is not a bank export. .qfx is what CIBC
+# names its Web Connect download, and it is the better file of the two it
+# offers -- it carries the bank's own transaction id and the rate it converted
+# at, neither of which survives into the CSV.
+SUFFIXES = (".csv", ".txt", ".tsv", ".qfx", ".ofx")
 
 # A statement larger than this is not a statement.
 MAX_BYTES = 8 * 1024 * 1024

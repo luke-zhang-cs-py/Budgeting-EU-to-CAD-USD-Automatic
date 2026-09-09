@@ -54,7 +54,16 @@ CREATE TABLE IF NOT EXISTS transactions (
     -- conversion cost, rather than silently reporting one currency as the
     -- other. Null for an ordinary euro purchase, which is most of them.
     charged_minor    INTEGER,
-    charged_currency TEXT
+    charged_currency TEXT,
+
+    -- The bank's own id for the transaction, from an OFX <FITID>.
+    --
+    -- Authoritative where the fingerprint is a guess. Two identical coffees on
+    -- one day are one purchase to a fingerprint of date, amount and
+    -- description, and genuinely two to the bank -- which says so, with two
+    -- different ids. Null for a CSV row and for manual entry, which is why
+    -- the fingerprint has to stay.
+    fitid            TEXT UNIQUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(spent_on);
@@ -147,6 +156,11 @@ LATER_COLUMNS = {
     "transactions": (
         ("charged_minor", "INTEGER"),
         ("charged_currency", "TEXT"),
+        # No UNIQUE here: SQLite cannot add a uniqueness constraint to an
+        # existing table with ALTER. New databases get it from the schema
+        # above; migrated ones get the column and rely on the lookup in
+        # ledger.add, which is where the check actually happens.
+        ("fitid", "TEXT"),
     ),
 }
 

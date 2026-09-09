@@ -25,7 +25,7 @@ app works offline.
 sandboxed on the device and have no export API. That is a real constraint, not
 a gap in this project, and anything claiming otherwise is scraping screenshots.
 
-So there are three honest routes in.
+So there are four honest routes in.
 
 **1. A watched folder — the automatic one.** Point `WALLET_INBOX` at a folder
 your phone already syncs (iCloud Drive, OneDrive, Dropbox), drop a bank export
@@ -42,7 +42,25 @@ Two properties make that safe to leave running:
   that predates all of this. That is the whole reason unattended import is
   safe.
 
-**2. Import a CSV by hand.** The importer assumes no format. It sniffs the
+**2. Prefer the `.qfx`, not the CSV.** CIBC exports both, and the OFX/QFX
+file carries three things its CSV throws away:
+
+| Tag | What it gives |
+|---|---|
+| `<FITID>` | the bank's own id for the transaction |
+| `<CURSYM>` | the currency the purchase was actually made in |
+| `<CURRATE>` | the exact rate the bank converted at |
+
+So the euro amount is the bank's own arithmetic — 85.94 CAD at a disclosed
+1.64321 is €52.30, exactly — rather than a regex over a description. And
+"have I seen this before" becomes an exact question instead of a comparison of
+dates and descriptions. Both dialects read: SGML (version 1, unclosed tags)
+and XML (version 2).
+
+Drop a `.qfx` in the watched folder and it is preferred automatically; the
+format is recognised by content, not by extension.
+
+**3. Import a CSV by hand.** The importer assumes no format. It sniffs the
 delimiter, works out which column is which, and shows a preview to correct
 before anything is saved. Revolut, Wise, N26, a UK `Paid out`/`Paid in`
 statement, a German semicolon file with decimal commas, and **headerless
@@ -51,19 +69,29 @@ the columns are inferred from the values, because CIBC alone produces at
 least three layouts and a per-bank profile would have to guess which one you
 downloaded.
 
-**3. Type it in.** One line for cash, or anything the export missed.
+**4. Type it in.** One line for cash, or anything the export missed.
 
 `sample-statement.csv` is included so a fresh clone has something to try.
 
-### Why not a bank API
+### Why there is no CIBC sync
 
-There is no live one to use in Canada yet. The Consumer-Driven Banking Act
-received Royal Assent in March 2026 and CIBC is a mandatory participant, but
-Phase 1 read access has no operational date. Aggregators that reach Canadian
-banks either need a commercial agreement or log into your online banking on
-your behalf, which breaches the bank's own agreement and can void your
-fraud-liability protection. When the official API lands, it becomes another
-source; until then a folder is the honest answer.
+Three separate things were checked before accepting that a file is the
+interface:
+
+- **No open-banking API.** The Consumer-Driven Banking Act received Royal
+  Assent in March 2026 and CIBC is a mandatory participant, but Phase 1 read
+  access has no operational date.
+- **No OFX Direct Connect.** CIBC supports Web Connect only — a manual
+  download. Direct Connect is supported by very few Canadian banks, and not
+  by this one.
+- **No aggregator worth using.** The ones that reach Canadian banks either
+  need a commercial agreement or log into your online banking on your behalf,
+  which breaches CIBC's own agreement and can void your fraud-liability
+  protection.
+
+When the official API lands it becomes another source. Until then, exporting
+the `.qfx` into a synced folder is as close to automatic as CIBC allows, and
+the only step it costs you is the download.
 
 ## What the conversion cost you
 
@@ -179,7 +207,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-375 tests, 100% coverage. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
+412 tests, 100% coverage. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
 one thing that will confuse you.
 
 ## License

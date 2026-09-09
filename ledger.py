@@ -96,7 +96,7 @@ def as_date(value):
 
 def add(connection, spent_on, description, amount_eur, category=None,
         source="manual", force=False, charged_minor=None,
-        charged_currency=None):
+        charged_currency=None, fitid=None):
     """Record one purchase. Returns (id, "added") or (existing_id, "duplicate").
 
     A duplicate is a normal outcome rather than an error: importing an
@@ -116,23 +116,67 @@ def add(connection, spent_on, description, amount_eur, category=None,
         mark = hashlib.sha256((mark + str(dt.datetime.now())
                                ).encode("utf-8")).hexdigest()[:db.DIGEST_CHARS]
 
-    existing = connection.execute(
-        "SELECT id FROM transactions WHERE fingerprint = ?", (mark,)).fetchone()
+    existing, how = _already_here(connection, mark, fitid)
     if existing:
-        return existing["id"], "duplicate"
+        return existing, how
 
     category = category or categorise(connection, description)
     cursor = connection.execute(
         "INSERT INTO transactions (spent_on, description, merchant, "
         "amount_eur, category, source, fingerprint, created_at, "
-        "charged_minor, charged_currency) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "charged_minor, charged_currency, fitid) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (on.isoformat(), description, merchant_of(description), amount,
          category, source, mark, dt.datetime.now().isoformat(timespec="seconds"),
          int(charged_minor) if charged_minor else None,
-         (charged_currency or "").upper() or None))
+         (charged_currency or "").upper() or None,
+         fitid or None))
     connection.commit()
     return cursor.lastrowid, "added"
+
+
+def _already_here(connection, mark, fitid):
+    """(id, "duplicate") if this purchase is already recorded, else (None, None).
+
+    The bank's id is an exact match where the fingerprint is a guess, so it is
+    checked first: if the ledger holds that id, this is the same transaction
+    and no comparison of dates and descriptions is needed.
+
+    It does *not* override a fingerprint collision, and that is a deliberate
+    narrowing of what I first wrote here. The tempting rule is "a new id means
+    the bank says this is distinct, so insert it" -- which would correctly
+    separate two identical coffees on one day. But it also re-opens the
+    failure this whole scheme exists to prevent: import February from the CSV,
+    then from the OFX, and every row doubles, because the CSV rows carry no id
+    to match against. Overlapping re-imports are the normal way this app is
+    used; two identical same-day purchases are not, and `force` already
+    handles them by salting the fingerprint.
+
+    Enforcement also has to stay in the database. fingerprint is UNIQUE there
+    so it holds no matter which code path inserts, and honouring a new id over
+    a fingerprint match would mean an INSERT the constraint then rejects --
+    which is exactly what happened when I tried it.
+
+    What the id does buy is the bridge: a fingerprint match against a row that
+    has no id of its own adopts the id, so every later comparison of that
+    purchase is the exact one.
+    """
+    if fitid:
+        row = connection.execute(
+            "SELECT id FROM transactions WHERE fitid = ?", (fitid,)).fetchone()
+        if row:
+            return row["id"], "duplicate"
+
+    row = connection.execute(
+        "SELECT id, fitid FROM transactions WHERE fingerprint = ?",
+        (mark,)).fetchone()
+    if not row:
+        return None, None
+    if fitid and row["fitid"] is None:
+        connection.execute("UPDATE transactions SET fitid = ? WHERE id = ?",
+                           (fitid, row["id"]))
+        connection.commit()
+    return row["id"], "duplicate"
 
 
 def recategorise(connection, transaction_id, category):

@@ -28,6 +28,7 @@ import fxcost
 import layout
 import ledger
 import money
+import ofx
 
 # Rows with more than this share unreadable are treated as the wrong mapping
 # rather than a bad file, because that is nearly always what it is.
@@ -59,6 +60,13 @@ def sniff(text):
     sample = "\n".join(text.splitlines()[:20])
     if not sample.strip():
         raise ImportProblem("the file is empty")
+
+    # OFX and QFX are not CSV, and they are the better file: the bank states
+    # its own transaction id and the rate it converted at, so neither has to
+    # be inferred. Recognised by content rather than by extension, because
+    # CIBC names its download .qfx and a synced folder renames things.
+    if ofx.looks_like_ofx(text):
+        return _sniff_ofx(text)
 
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=";,\t|")
@@ -100,6 +108,76 @@ def sniff(text):
         "sample": body[:PREVIEW_ROWS],
     }
 
+
+def _sniff_ofx(text):
+    """An OFX or QFX file, already parsed.
+
+    Returned in the same shape a CSV sniff produces so that preview() and
+    load() do not need to know which kind of file this was. There is no column
+    mapping to choose, because the file names its own fields -- so `mapping`
+    is empty and `headerless` is beside the point.
+    """
+    rows = ofx.transactions(text)
+    return {
+        "delimiter": None,
+        "headers": [],
+        "rows": rows,
+        "mapping": layout.empty(),
+        "headerless": False,
+        "ofx": True,
+        "account_currency": ofx.account_currency(text) or money.BASE,
+        "sample": rows[:PREVIEW_ROWS],
+    }
+
+
+def _ofx_entry(row, account_currency, number):
+    """One OFX transaction as an import entry, or an exception saying why not.
+
+    The euro figure comes from the bank's own disclosure rather than from
+    reading the description: TRNAMT divided by CURRATE is the amount the
+    purchase was actually made in, exactly. 85.94 CAD at a stated 1.64321 is
+    52.30 EUR, and no regex was involved.
+    """
+    if row.get("problem"):
+        raise ValueError(row["problem"])
+    if not row["description"]:
+        raise ValueError("no description")
+
+    amount = row["amount"]
+    charged_minor = charged_currency = None
+    origin = row.get("origin_currency")
+    rate = row.get("origin_rate")
+
+    if origin and origin != money.BASE:
+        # Billed in the account's currency, made in something that is not
+        # euros either. Out of scope for the same reason it always was: this
+        # app takes euros in, and a guessed conversion is worse than none.
+        raise ValueError(f"made in {origin}, not {money.BASE}")
+
+    if origin == money.BASE and account_currency != money.BASE:
+        if not rate:
+            raise ValueError(f"{money.BASE} purchase with no rate disclosed")
+        # The sign stays with the transaction; the magnitude converts.
+        original = money.convert(abs(amount), 1 / rate)
+        charged_minor, charged_currency = abs(amount), account_currency
+        amount = -original if amount < 0 else original
+    elif account_currency != money.BASE:
+        # A domestic purchase on a non-euro account -- a Canadian coffee on a
+        # Canadian card. Nothing to convert and no euro figure to record.
+        raise ValueError(f"not in {money.BASE} (account is "
+                         f"{account_currency})")
+
+    return {
+        "row": number,
+        "spent_on": row["spent_on"],
+        "description": row["description"],
+        "amount_eur": amount,
+        "amount_text": money.format(amount, money.BASE),
+        "category": None,
+        "charged_minor": charged_minor,
+        "charged_currency": charged_currency,
+        "fitid": row.get("fitid"),
+    }
 
 def _amount_of(row, mapping):
     """Signed cents for one row: negative spent, positive received.
@@ -145,23 +223,36 @@ def preview(sniffed, mapping=None, rows=PREVIEW_ROWS):
     Reports per-row problems rather than stopping at the first, because the
     useful message is "column looks wrong" and one row cannot show that.
     """
-    mapping = mapping or sniffed["mapping"]
-    headers = sniffed["headers"]
-    if not mapping.get("date"):
-        raise ImportProblem("no date column chosen")
-    if not mapping.get("description"):
-        raise ImportProblem("no description column chosen")
-
     parsed, problems = [], []
-    for number, raw in enumerate(sniffed["rows"], start=2):
-        row = dict(zip(headers, [cell.strip() for cell in raw]))
-        try:
-            entry = _row(row, mapping, number)
-        except (money.MoneyError, ValueError, ImportProblem) as bad:
-            problems.append({"row": number, "why": str(bad),
-                             "raw": raw[:6]})
-            continue
-        parsed.append(entry)
+
+    if sniffed.get("ofx"):
+        # No mapping to validate: the file names its own fields. The row loop
+        # is the same shape so that everything downstream -- the counts, the
+        # unreadable share, load() -- is shared rather than duplicated.
+        account = sniffed.get("account_currency", money.BASE)
+        for number, row in enumerate(sniffed["rows"], start=1):
+            try:
+                parsed.append(_ofx_entry(row, account, number))
+            except (money.MoneyError, ValueError) as bad:
+                problems.append({"row": number, "why": str(bad),
+                                 "raw": [row.get("description", "")]})
+    else:
+        mapping = mapping or sniffed["mapping"]
+        headers = sniffed["headers"]
+        if not mapping.get("date"):
+            raise ImportProblem("no date column chosen")
+        if not mapping.get("description"):
+            raise ImportProblem("no description column chosen")
+
+        for number, raw in enumerate(sniffed["rows"], start=2):
+            row = dict(zip(headers, [cell.strip() for cell in raw]))
+            try:
+                entry = _row(row, mapping, number)
+            except (money.MoneyError, ValueError, ImportProblem) as bad:
+                problems.append({"row": number, "why": str(bad),
+                                 "raw": raw[:6]})
+                continue
+            parsed.append(entry)
 
     total = len(parsed) + len(problems)
     if total >= MIN_ROWS_FOR_MAPPING_CHECK and \
@@ -263,7 +354,8 @@ def load(connection, previewed, source="import", use_file_categories=False):
                                   entry["description"], entry["amount_eur"],
                                   category=category, source=source,
                                   charged_minor=entry.get("charged_minor"),
-                                  charged_currency=entry.get("charged_currency"))
+                                  charged_currency=entry.get("charged_currency"),
+                                  fitid=entry.get("fitid"))
         except (ValueError, money.MoneyError) as bad:
             failed.append({"row": entry["row"], "why": str(bad)})
             continue
