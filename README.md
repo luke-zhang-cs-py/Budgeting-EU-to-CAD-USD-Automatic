@@ -139,14 +139,92 @@ It also never reaches *forward* for a nearer rate. 5 April is one day from the
 spent — using it would make a closed month's total change every time the file
 was refreshed.
 
+## Snapping a purchase
+
+Upload a screenshot — a card app's transaction detail, a payment
+confirmation, a row of online banking — and the amount, date, merchant and
+card are read off it. The engine is a local ONNX model, so **no picture of
+what you bought is sent anywhere**. It is an optional install:
+
+```bash
+pip install -r requirements-ocr.txt      # ~60 MB, local, works offline
+```
+
+Without it the upload still works: the screenshot is stored and attached to
+the purchase you then type by hand.
+
+**Nothing is ever recorded from a screenshot without you seeing it first.**
+The reader fills a form; the form is what saves. That is not caution for its
+own sake — an OCR misread that books €5,230 instead of €52.30 surfaces a
+month later in a total nobody can explain, which is far worse than a
+screenshot that could not be read at all.
+
+So it says what it could not settle, and why:
+
+| What it does | Why |
+|---|---|
+| Takes the **tallest** number as the amount | Whoever designed that screen made the figure large because it is the one you opened it to see. Position is a much weaker clue. Every other candidate is offered. |
+| Refuses `2026`, `14:32`, `4417`, `1.64321` | A run of digits is money only if it carries a currency marker or ends in exactly two decimals. Without that rule the year is a very large purchase. |
+| Leaves `$` unresolved | On a CIBC statement it is Canadian and on a US receipt it is not, and nothing in a screenshot settles it. |
+| Asks about `07/09/2026` | The 7th of September, or the 9th of July. It offers both rather than picking one. |
+| Prefers what the bank disclosed | `Foreign currency 52.30 EUR @ 1.64321` is the bank stating what it actually did — and 52.30 × 1.64321 is exactly the CA$85.94 it billed. |
+| Matches `••4417` to a card | So the right foreign-transaction fee applies. Two cards sharing a mask match neither. |
+
+## What will this cost?
+
+The latest published euro rate, fetched when you ask, with your card's fee on
+top:
+
+```
+€52.30 at 1.6043            CA$83.90
+CIBC Dividend Visa, 2.50%    +CA$2.10
+you would be charged        CA$86.00      an all-in rate of 1.6444
+```
+
+A word on "real time", because the phrase promises more than the situation
+can use. Both free sources republish the ECB's **once-a-day** fixing, and
+there is no free intraday EUR/CAD tick. Chasing one would be false precision
+anyway: **a card is not settled at the rate at the moment you tap.** Visa
+converts on the day the transaction reaches the network, and the fee follows.
+So the figure carries the day it was published and the minute it was fetched,
+and the page says plainly that it is a daily reference rate.
+
+The model checks out against a real statement: the ECB rate plus 2.5%
+predicts CA$86.00 where CIBC actually billed CA$85.94.
+
+## Cards, and a fee that is measured rather than assumed
+
+The foreign-transaction fee is a property of the **card**, not of the
+purchase — the same euro coffee costs 2.5% more on a CIBC Visa than on a euro
+account — so it is stored per card, in basis points, and each purchase is
+attributed to whichever card paid for it.
+
+The published 2.5% is a starting point. Once statements are in, `measure fee`
+reports what the card actually charged over its own rows, which came out at
+2.39–2.49%, because Visa converts at its own rate rather than the ECB's. It
+declines to answer below three priced purchases rather than dressing the
+published figure up as an observation.
+
+A card's balance says how it was arrived at: purchases imported from a
+statement are exact, euro purchases converted at the day's rate are an
+estimate, and the two are counted separately rather than blended into one
+figure that looks exact.
+
 ## What it does
 
 - **Converts** every purchase to CAD and USD at its own transaction-date rate
+- **Reads a screenshot** of a purchase, locally, and asks before recording it
+- **Estimates** what a euro amount will bill on a given card, at today's rate
+- **Tracks cards**, each with its own currency, fee and balance
 - **Exports** a CSV: euros, CAD, USD, both rates, the rate date and the lag
 - **Budgets** a monthly cap per category, with spent / remaining / over-pace
 - **Detects duplicates**, so re-importing an overlapping statement is safe
 - **Auto-categorises** from keyword rules, applied to rows already imported
-- **Flags recurring charges** — same merchant, similar amount, 3+ months
+- **Flags recurring charges** — and says when one has quietly got dearer,
+  with what the rise costs over a year
+- **Compares each category with its own average**, not with a budget, which
+  is the comparison that catches something creeping up over a quarter
+- **Tracks goals** against what your own caps actually left over
 - **Search, monthly trend, per-category totals**
 
 ### Money
@@ -183,12 +261,28 @@ looks like an ordinary small purchase.
 | `GET /api/reconciles` | does the file add up to the ledger |
 | `GET /api/sources` | where the watched folder is, and what it has imported |
 | `POST /api/sources/scan` | sweep the folder now rather than waiting |
+| `POST /api/receipt/read` | read a screenshot; records nothing |
+| `POST /api/receipt/save` | record the purchase you confirmed |
+| `GET /receipt/<name>` | a stored screenshot, by its content digest |
+| `GET /api/rate/live` | the latest published rate, fetched now |
+| `POST /api/rate/estimate` | what an amount would bill on a card |
+| `GET POST /api/cards` | cards and their balances |
+| `POST DELETE /api/cards/<id>` | correct or remove one |
+| `GET /api/cards/<id>/measured` | the fee its own rows actually show |
+| `POST /api/transaction/<id>/card` | say which card paid |
+| `GET /api/trends` | month by month, and this month's movers |
+| `GET /api/trends/<category>` | the purchases behind one figure |
+| `GET /api/subscriptions` | what is due, what landed, what got dearer |
+| `GET POST /api/goals` | goals and what the month contributed |
+| `DELETE /api/goals/<id>` | remove one |
 
 ## Your data
 
-`data/` — holding `wallet.db` with every purchase, and the rate cache — is
-gitignored, along with `*.db` and `*.csv`. Financial history does not belong
-in a repository. Set `WALLET_DATA` to move it elsewhere, and `WALLET_INBOX`
+`data/` — holding `wallet.db` with every purchase, the rate cache, and
+`data/receipts/` with every screenshot you have uploaded — is gitignored,
+along with `*.db` and `*.csv`. Financial history does not belong in a
+repository, and a folder of pictures of what you bought is the most personal
+thing this app holds. Set `WALLET_DATA` to move it elsewhere, and `WALLET_INBOX`
 to point the watched folder at your synced directory.
 
 This repository is public, so that ignore file is what stands between a real
@@ -207,8 +301,16 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-412 tests, 100% coverage. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the
-one thing that will confuse you.
+699 tests, 100% of 2,195 statements. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the conventions and the one thing that will confuse you.
+
+The screenshot parser is tested without the OCR engine at all: `ocr.py` turns
+an image into text boxes, `receipts.py` turns boxes into a purchase, and the
+tests build boxes by hand. Every mangled string in them came out of the real
+engine — `8September2026at14:32` with the spaces eaten, `18,90` with the euro
+sign dropped — because inventing tidier input would test a parser for a
+problem this one does not have. One integration test runs the real engine and
+skips when it is not installed.
 
 ## License
 

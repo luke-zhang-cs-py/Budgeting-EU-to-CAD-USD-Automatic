@@ -392,3 +392,158 @@ rather than assumed:
 `test_working_out_a_file_shape_is_not_in_the_importer`,
 `test_the_route_groups_stay_small`,
 `test_the_schema_docstring_counts_its_own_tables`.
+
+
+# Third pass — screenshots, live rates, cards and planning
+
+Measured 9 September 2026 after the work: **699 tests, 100% of 2,195
+statements**, and no flake8 finding in any new module, including
+`--max-complexity=10`.
+
+Eight modules were added (`ocr`, `receipts`, `fetch`, `fxlive`, `cards`,
+`trends`, `upcoming`, `goals`) and two tables (`cards`, `goals`). What follows
+is what the checklist found while doing it — most of it caught by the
+structural guards the earlier passes left behind, which is the first time
+those have paid for themselves on code that did not exist when they were
+written.
+
+## Change preventers — a private reached across a module boundary
+
+`fxlive` needed to fetch a URL. `fxrates` already had the urllib-then-curl
+ladder, as `_download`, so the two honest options were to reach into that
+private name or to write the fallback twice — the exact pair of smells
+`test_no_module_reaches_into_another_private_name` and the duplication rules
+exist to prevent. Extracted to `fetch.py` instead, and the eighteen tests that
+had been patching `fxrates._download` now patch `fetch.get`.
+
+## Bloaters — three route groups and one validator
+
+flake8 measured `_receipts` at 19, `_cards` at 18 and `_planning` at 12,
+against a threshold of 10. Split into `_receipts` / `_receipt_files`,
+`_cards` / `_card_settings` / `_card_insight`, and
+`_planning` / `_goals_and_subscriptions`, with `_record_confirmed` and
+`_reading_with_context` extracted to module level. Sixteen route groups now,
+none over 10.
+
+`cards.update` measured 11, and the cause was duplication rather than size:
+`add` and `update` each validated the same four fields, and had **already
+diverged** — update's fee message had lost half its explanation. One
+`CLEANERS` table now serves both, so a rule enforced on creation cannot go
+missing on correction.
+
+## Dispensables — two unreachable branches
+
+`receipts._one_amount` had a second guard for "a run of digits with no
+separator", which could never fire: anything reaching it either had a currency
+marker or had the two-decimal tail the line above insists on — and a tail is a
+separator.
+
+`cards.measured_fee` had `if not reference: return None`. `fxcost.compare`
+returns None rather than a row with a zero reference, and every reference it
+does return is `money.convert(abs(...))`, which is positive. Both removed. An
+unreachable branch reads as a case somebody has thought about, which is worse
+than no branch at all.
+
+## The sign bug that mattered most
+
+A card's balance summed two figures with different sign conventions.
+`amount_eur` is signed — negative for an expense — while `charged_minor` is
+stored by the importers as `abs(amount)`, a magnitude carrying no direction.
+Taken at face value an exact row contributed **+8594** and an estimated one
+**-572**, so the balance added a purchase and a purchase as though one were a
+refund.
+
+Fixed by taking the direction from the euro amount in both branches and
+reporting spending positively, the way `budgets.status` already did. A refund
+now nets off, which is the property the test pins.
+
+## Unit-level bugs found by running the thing
+
+Three, all found by pointing the parser at output from the real engine rather
+than at input invented for it:
+
+- **The date was never found.** There is no `\b` after the year in
+  `8September2026at14:32` — "6" and "a" are both word characters. The engine
+  eats spaces, so this is the common case, not an edge one. `(?!\d)` instead.
+- **The card was never found.** The engine renders two bullets as a single
+  `*`, and the mask pattern required two mask characters.
+- **A euro purchase reported a conversion of itself.** The only amount on the
+  screen is `-52,30 EUR`, `fxcost.foreign_amount` finds it, and reporting that
+  as a foreign original invites comparing an amount against itself — which
+  yields a confident zero-cost conversion that never happened.
+
+And one in `ledger.recurring`, found by reading its output: requiring every
+month to sit within tolerance of one mean threw away **exactly the case worth
+flagging**, a 9.99 that became 14.99. It now accepts one price followed by
+another, with `MIN_AT_EACH_LEVEL = 2` sightings at each level — without that
+floor a transport spend of 60, 62, 59 then 20 was reported as a subscription
+whose price had fallen to 20, and its 20 went into the projected monthly cost
+of things that are not subscriptions at all.
+
+## Abusers — a guard that had quietly stopped guarding
+
+Every check in `test_frontend.py` read `static/js/app.js` **by name**. A
+second script was added and none of them applied to it, so `finance.js`
+shipped a second money formatter and a font size outside the type scale —
+both things those tests exist to catch. The fixture now concatenates every
+script the page loads, and a companion test asserts that list matches the
+`script` tags, so a third file cannot silently escape.
+
+Extending it found four real faults: the client-side cents formatter (removed;
+`money.format` now sends the plain form), `toFixed(2)` on percentages
+(removed; formatted in Python), an unescaped interpolation in the panel that
+quotes the screenshot back (now text nodes, which cannot be markup), and five
+unescaped values that were safe but exception-worthy.
+
+The same omission applied to `tests/test_structure.py`, whose `MODULES` tuple
+listed nine modules. Adding the eight new ones was one line, and immediately
+found the private reach above.
+
+## Speculative generality — deliberately not built
+
+A "real time" rate was asked for. Both free sources republish the ECB's
+once-a-day fixing, there is no free intraday EUR/CAD tick, and **a card is not
+settled at the rate at the moment you tap** — Visa converts on the day it
+processes the purchase. A live ticker would have been precision the situation
+cannot use. What is built instead is the latest published rate, carrying its
+publication date and the minute it was fetched, with a `daily_reference` flag
+the page reads rather than a claim the page makes.
+
+The model self-validates: ECB 1.6043 plus 2.5% predicts CA$86.00 against the
+CA$85.94 CIBC actually billed.
+
+## Bug classes
+
+| Class | Instance | State |
+|---|---|---|
+| Sign | A balance summed a signed and an unsigned figure | Direction taken from `amount_eur` in both branches |
+| Type | `spent_on` is text and `fxrates` compares dates, so it raised TypeError rather than RateError and escaped the handler | Coerced in `_day_of` |
+| Regex | `\b` after a year the engine ran into the next word | `(?!\d)`, with the reason recorded beside it |
+| Off-by-one | A single odd month read as a new price | `MIN_AT_EACH_LEVEL` |
+| Injection | Path traversal through an uploaded filename | Names are a content digest; `stored_path` refuses anything else |
+| Injection | Untrusted text into `innerHTML` | Text nodes in the one panel that quotes the screenshot |
+| Validation | An image type taken from the upload's own filename | Sniffed from magic bytes |
+| Resource | A 25 MB "screenshot" tying up a request | `MAX_BYTES`, checked before the engine is built |
+| Environment | A 60 MB optional dependency in the critical path | Deferred import, `available()`, its own requirements file |
+| Arithmetic | A percentage fee as a float beside an amount | Basis points, integer, one `CLEANERS` entry |
+
+## Maintenance classification
+
+**Corrective** — the sign bug, the three parser bugs, the recurring-detection
+gap, and the two faults extending `test_frontend` exposed.
+
+**Adaptive** — a schema that took two more tables and three more columns
+without rewriting a row, through the same additive `LATER_COLUMNS` path.
+`LATER_INDEXES` was added because an index on a migrated column cannot be
+created before the migration runs, which broke opening every pre-cards
+database until it was.
+
+**Perfective** — `fetch.py`; the route-group splits; the `CLEANERS` table; two
+unreachable branches removed; money formatting moved out of the browser.
+
+**Preventive** — `test_the_page_loads_every_script_these_guards_check`,
+`test_there_is_exactly_one_escaper`,
+`test_the_deferred_import_allowance_is_not_a_blanket_one`, and the eight new
+modules added to `MODULES`. Each was run against a planted fault: the layer
+guard, the private-reach guard and the deferred-import guard were all
+confirmed to go red on a deliberately broken copy before being trusted.

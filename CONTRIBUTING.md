@@ -56,6 +56,25 @@ rate leaves the column blank with a note. Zero in a money column is
 indistinguishable from a free purchase, so the ledger would be wrong and
 nothing would flag it.
 
+**Nothing read off a screenshot reaches the ledger unseen.** `receipts.parse`
+returns what it could not settle in `needs`, and the interface puts it in
+front of a person. An OCR misread that books 5230 instead of 52.30 is found a
+month later in a total nobody can explain; a screenshot that could not be read
+is found immediately.
+
+**The OCR engine stays optional and stays local.** It is imported inside a
+function -- the one deferred import in the project, allowed by name in
+`tests/test_structure.py` because it costs a measured 1.0s against 0.65s for
+the whole rest of the wallet. `ocr.available()` is the only way to ask. No
+screenshot is ever sent to a service.
+
+**Guards name the thing they guard, not one file.** Every check in
+`test_frontend.py` read `app.js` by name, so a second script escaped all of
+them and shipped a duplicate money formatter. `test_structure.py` has the same
+shape with its `MODULES` tuple. Adding a module or a script means adding it
+there, and both files now have a companion test that fails if the list drifts
+from reality.
+
 ## Tests
 
 ```bash
@@ -63,6 +82,19 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-Both clean before a push. The cases most worth adding to are the awkward
-ones: a bank format that imports wrong, a holiday the rate lookback handles
-badly, an amount that parses to the wrong magnitude.
+Both clean before a push -- 699 tests, 100% of 2,195 statements. The cases
+most worth adding to are the awkward ones: a bank format that imports wrong, a
+holiday the rate lookback handles badly, an amount that parses to the wrong
+magnitude, a screenshot the parser reads as a year.
+
+The optional OCR install is not needed to run them. `ocr.py` turns an image
+into text boxes and `receipts.py` turns boxes into a purchase, so the parser
+tests build boxes by hand and finish in milliseconds. Use real engine output
+when you add one -- every mangled string in there came off an actual
+screenshot, and tidier input would test a parser for a problem this one does
+not have. One integration test runs the engine and skips without it.
+
+**Watch a new guard fail before trusting it.** Break the code it protects,
+confirm it goes red, put the code back. Four structural tests written for
+these projects passed unconditionally -- one compared a value to itself, one
+grepped a whole file and found its string in a comment.
