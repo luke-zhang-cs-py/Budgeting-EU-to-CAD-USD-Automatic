@@ -72,6 +72,12 @@ def collect_tests():
 
 
 def fix_modules(page, measured, changes):
+    # Padded to a column computed from the longest name, not by re-emitting
+    # whatever whitespace was there. Carrying the old padding forward and
+    # adding a space to it meant every run of this script widened the table
+    # by one column and left a 23-line whitespace diff behind.
+    column = max(len(name) for name in measured) + 3
+
     def one(match):
         name = match.group("name")
         if name not in measured:
@@ -82,12 +88,12 @@ def fix_modules(page, measured, changes):
         was = (int(match.group("lines")), int(match.group("stmts")))
         if was != (lines, stmts):
             changes.append("%-14s %s -> %s" % (name, was, (lines, stmts)))
-        return ("{ name: '%s',%s lines: %s, stmts: %s, missed: 0,"
-                % (name, match.group("pad"), str(lines).rjust(3),
+        return ("{ name: %s lines: %s, stmts: %s, missed: 0,"
+                % (("'%s'," % name).ljust(column), str(lines).rjust(3),
                    str(stmts).rjust(3)))
 
     page = re.sub(
-        r"\{ name: '(?P<name>[\w.]+)',(?P<pad>\s*)lines:\s*(?P<lines>\d+),"
+        r"\{ name: '(?P<name>[\w.]+)',\s*lines:\s*(?P<lines>\d+),"
         r"\s*stmts:\s*(?P<stmts>\d+), missed: 0,", one, page)
 
     listed = set(re.findall(r"\{ name: '([\w.]+)',", page))
@@ -159,11 +165,27 @@ def fix_readme(counts, measured, changes):
         write(README, readme.replace(found.group(0), wanted))
 
 
+def rewrite(page, measured, counts, changes):
+    return fix_route_count(
+        fix_tests(fix_modules(page, measured, changes), counts, changes),
+        changes)
+
+
 def main():
     measured, counts, changes = measure_modules(), collect_tests(), []
     page = read(PAGE)
-    fixed = fix_route_count(fix_tests(fix_modules(page, measured, changes),
-                                      counts, changes), changes)
+    fixed = rewrite(page, measured, counts, changes)
+
+    # Running this twice must be the same as running it once. It was not: the
+    # module table gained a column of whitespace on every run, which is the
+    # kind of diff that makes a tool nobody trusts to run.
+    again = rewrite(fixed, measured, counts, [])
+    if again != fixed:
+        raise SystemExit(
+            "this script is not idempotent -- a second pass over its own "
+            "output changed it again, so it would leave a whitespace diff "
+            "behind on every run. Fix that before trusting what it wrote.")
+
     if fixed != page:
         write(PAGE, fixed)
     fix_readme(counts, measured, changes)

@@ -377,6 +377,54 @@ deployment differs in ways that matter — the dev server is single-threaded, an
 the folder watcher must not run once per worker, since the right number of
 threads writing to one SQLite file is one.
 
+### On Fly.io, in order
+
+`fly.toml` is in the repository. The order of these matters: the app refuses
+to start without the two secrets, so setting them after the first deploy
+means watching that deploy fail first.
+
+```bash
+fly auth login
+fly launch --no-deploy          # reads fly.toml; change the app name when asked
+
+fly volumes create wallet_data --size 1 --region yyz    # the disk. Not optional.
+
+python -m auth                                          # prints the hash
+fly secrets set WALLET_PASSWORD_HASH='scrypt:32768:8:1$...'
+fly secrets set SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+
+fly deploy
+fly scale count 1               # one machine. SQLite has one writer.
+fly open                        # and log in
+```
+
+Then `fly logs` if anything is wrong. Two failures are worth recognising on
+sight, because both are the app working as intended:
+
+| What you see | What it is |
+|---|---|
+| `Unsafe: refusing to bind 0.0.0.0 with no password` | `WALLET_PASSWORD_HASH` is not set, or the deploy predates it. The process exits rather than serving an unprotected ledger. |
+| the login page accepts the password, then returns to the login page | you reached it over `http://`. The session cookie is `Secure`, so it was never sent. `force_https = true` is in `fly.toml` for this; use the `https://` URL. |
+
+Both platforms now cost a few dollars a month for a machine with a disk
+attached — Fly has no free allowance for a new organisation, and Render's
+free tier has no disk at all, which for this app means losing everything on
+each deploy. `render.yaml` is included with that written at the top of it.
+
+**Consider not hosting it.** The reason to put this on the internet is to
+reach it from a phone, and there is now a version of the part you actually
+want out of the house — the [capture page](#the-same-job-with-no-server-the-capture-page),
+which is already published, costs nothing, holds its purchases in the browser
+and exports a CSV this app imports. Hosting the full app means trusting a
+host with an unencrypted file of everything you have spent. That is a real
+decision and it is worth making deliberately rather than because a deploy
+button was there.
+
+These two config files have not been deployed from this repository — no
+platform account is attached to it. They are written against each platform's
+documented schema, and the first `fly deploy` or the Render dashboard will
+tell you if a field name has moved since.
+
 ### HTTPS is the host's job, and the app assumes you did it
 
 Once `HOST` is not loopback the session cookie is marked `Secure`, so **it is

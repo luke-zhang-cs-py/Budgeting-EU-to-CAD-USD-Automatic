@@ -1,0 +1,70 @@
+# Fly.io. The recommended way to host this, for one reason: the ledger is a
+# single SQLite file and a folder of screenshots, so it needs a disk that
+# survives a deploy, and Fly gives one to a single small machine without
+# ceremony.
+#
+# Two things here are not defaults and not negotiable:
+#
+#   * one machine. `fly deploy` will happily run two, and two processes
+#     writing one SQLite file means "database is locked" under any real use.
+#     `fly scale count 1` after the first deploy, and leave it there.
+#   * the volume. Without [[mounts]] the database lives in the machine's own
+#     filesystem and the next deploy destroys it. This is the single most
+#     likely way to lose the data.
+#
+# It will refuse to start until WALLET_PASSWORD_HASH and SECRET_KEY are set,
+# which is deliberate -- see README, "Running it somewhere other than your
+# own machine". Set them with `fly secrets set` BEFORE the first deploy.
+#
+# Not deployed from this repository, so treat the field names as a starting
+# point: `fly deploy` reports anything Fly has since renamed, and the README
+# walkthrough has the commands in order.
+
+app = 'wallet-eu-cad'          # change this -- app names are global
+primary_region = 'yyz'         # Toronto. `fly platform regions` for the list
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  # HOST is read by wsgi.py and handed to auth.guard, which is what turns on
+  # the password requirement, the Secure cookie and HSTS. It is 0.0.0.0 here
+  # because the Fly proxy is what the internet talks to.
+  HOST = '0.0.0.0'
+  PORT = '8000'
+  # Must match the mount below. The Dockerfile sets it too; it is repeated
+  # here so that changing the mount without changing this is visible in one
+  # file rather than two.
+  WALLET_DATA = '/data'
+
+[[mounts]]
+  source = 'wallet_data'       # `fly volumes create wallet_data --size 1`
+  destination = '/data'
+
+[http_service]
+  internal_port = 8000
+  # The session cookie is marked Secure once the app is public, so it is not
+  # sent over plain HTTP at all. Without this the login page would accept the
+  # password and then bounce straight back to itself.
+  force_https = true
+  auto_start_machines = true
+  # Stopped when idle and woken by a request: this is one person's wallet,
+  # not a service. The cost is a few seconds on the first request after an
+  # idle spell. Set min_machines_running = 1 if that annoys you.
+  auto_stop_machines = 'stop'
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    path = '/health'           # one of the four routes open without a session
+    method = 'GET'
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '15s'
+
+[[vm]]
+  # The app is a few hundred KB of Python and the ECB history is a 640 KB
+  # file. The smallest machine is the right one; the OCR engine is not
+  # installed in the image, and would need more.
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

@@ -1,0 +1,56 @@
+# Render, as the alternative to fly.toml. One caveat decides which you want:
+#
+#   Render's free web service has no persistent disk. Not a small one -- none.
+#   Deploy this app on it and the ledger, the rate cache and every uploaded
+#   screenshot are destroyed on the next deploy and on every restart. A disk
+#   needs a paid instance type, which is why `plan` below is not `free`.
+#
+# If you would rather not pay for either, the honest answer is not to host
+# the app at all: run it on your own machine, and use the published capture
+# page from your phone for the one job you want while out. That page needs no
+# server, holds its purchases in the browser, and exports a CSV this app
+# imports.
+#
+# Same two non-negotiables as Fly: one instance, because the ledger is a
+# single SQLite file, and a disk mounted where WALLET_DATA points. The app
+# refuses to start until WALLET_PASSWORD_HASH is set.
+#
+# Not deployed from this repository -- if Render has renamed a field, the
+# dashboard says so when it reads this file.
+
+services:
+  - type: web
+    name: wallet
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: ohio
+    # Not `free`: a free instance has no disk, and this app's whole state is
+    # on disk. It also sleeps, and waking it is slower than Fly.
+    plan: starter
+    # One. SQLite has one writer, and Render will not stop you asking for
+    # more.
+    numInstances: 1
+    healthCheckPath: /health
+
+    disk:
+      name: wallet-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000
+      - key: WALLET_DATA
+        value: /data
+      # Generated once by Render and never shown to you, which is fine: it
+      # only signs the session cookie. Changing it logs you out, nothing
+      # more. auth.guard requires 32+ characters.
+      - key: SECRET_KEY
+        generateValue: true
+      # sync: false means "ask me, do not put it in the repository". Produce
+      # it with `python -m auth`, which asks for the password twice and
+      # prints only the scrypt hash.
+      - key: WALLET_PASSWORD_HASH
+        sync: false
