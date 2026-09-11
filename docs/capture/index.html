@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12141a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex, nofollow">
+<title>Capture — photograph a purchase</title>
+
+<!-- The reader is fetched from a CDN and runs in a worker, which is why
+     script-src names jsdelivr and worker-src allows blob:. Everything else
+     stays closed: there is no connect-src for a server, because there is no
+     server -- nothing on this page can send your purchases anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' https://cdn.jsdelivr.net 'unsafe-eval';
+  worker-src blob: https://cdn.jsdelivr.net;
+  child-src blob:;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  connect-src https://cdn.jsdelivr.net data: blob:;
+  base-uri 'none';
+  form-action 'none';
+  frame-ancestors 'none'">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Capture</h1>
+    <p class="sub" id="monthLabel">—</p>
+  </div>
+  <div class="acts">
+    <button type="button" id="export" class="ghost">Export CSV</button>
+  </div>
+</header>
+
+<section class="totals">
+  <div class="total">
+    <span class="label">Spent this month</span>
+    <strong class="figure" id="spent">—</strong>
+  </div>
+  <div class="total">
+    <span class="label">Recorded here</span>
+    <strong class="figure small" id="count">—</strong>
+  </div>
+</section>
+
+<p class="notice" id="notice" hidden></p>
+
+<main>
+
+<section class="card">
+  <h2>Photograph a purchase</h2>
+  <p class="hint">
+    A card app's transaction detail, a payment confirmation, a till receipt.
+    <strong>It is read inside this browser</strong> — the image is never
+    uploaded, because this page has no server to upload it to.
+  </p>
+
+  <label class="drop" id="drop" for="file">
+    <input type="file" id="file" accept="image/*" capture="environment">
+    <span class="dropBig" id="dropBig">Choose or drop an image</span>
+    <span class="dropSmall">or paste one</span>
+  </label>
+
+  <div class="progress" id="progress" hidden>
+    <span class="bar"><span id="bar"></span></span>
+    <span class="hint" id="progressNote"></span>
+  </div>
+
+  <!-- Pre-filled, so this is one look and one button -- but it is still a
+       look. A misread that books 5,230 instead of 52.30 is found a month
+       later in a total nobody can explain. -->
+  <div id="reading" hidden>
+    <div class="readingTop">
+      <img id="shot" class="shot" alt="the image you chose">
+      <div class="fields">
+        <div class="needs" id="needs" hidden></div>
+        <form id="saveForm">
+          <div class="row">
+            <label class="field">
+              <span>Amount (EUR)</span>
+              <input id="amount" inputmode="decimal" required>
+            </label>
+            <label class="field">
+              <span>Date</span>
+              <input id="date" type="date" required>
+            </label>
+          </div>
+          <div class="row">
+            <label class="field grow">
+              <span>What was it</span>
+              <input id="description" required autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <input id="category" list="categories" placeholder="optional"
+                     autocomplete="off">
+            </label>
+          </div>
+          <div class="row actions">
+            <button type="submit">Record it</button>
+            <button type="button" class="ghost" id="discard">Discard</button>
+          </div>
+        </form>
+        <p class="hint" id="candidates"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="cardHead">
+    <h2>Recorded</h2>
+    <span class="hint" id="recentNote"></span>
+  </div>
+  <ul class="entries" id="entries"></ul>
+</section>
+
+<section class="card">
+  <h2>Where this lives</h2>
+  <p class="hint" id="storageNote"></p>
+  <div class="row actions">
+    <button type="button" id="export2">Export CSV</button>
+    <button type="button" class="ghost" id="clear">Delete everything</button>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>Nothing leaves this browser.</span>
+  <span><a href="../">About the wallet app &rarr;</a></span>
+</footer>
+
+<datalist id="categories"></datalist>
+
+<script src="rules.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

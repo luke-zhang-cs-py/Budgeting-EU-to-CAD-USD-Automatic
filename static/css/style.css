@@ -37,6 +37,14 @@
 
 * { box-sizing: border-box; }
 
+/* A rule here that sets `display` beats the browser's own
+   `[hidden] { display: none }`, because an author rule always beats a user
+   agent one. `.shotImage { display: block }` did: the screenshot element
+   ships hidden with no src, so an empty image box was drawn above the form
+   on both views until one was chosen. This makes the attribute mean what it
+   says whatever is declared below. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -362,4 +370,59 @@ button.ghost, .ghost.button {
 .spark span {
   padding: 2px 6px; background: var(--panel-2);
   border: 1px solid var(--line); border-radius: 4px;
+}
+
+/* ================================================== the stripped-back view */
+/* templates/simple.html: the figures and a way to add to them, nothing else.
+ * It reuses every component above; these rules only narrow the column, so a
+ * page with three cards on it does not stretch a table across a wide
+ * monitor. */
+
+.plain main,
+.plain .totals,
+.plain .top,
+.plain .foot { max-width: 940px; margin-left: auto; margin-right: auto; }
+
+/* The date column in the recent list. The .num cells are already tabular;
+ * a date is monospace for the same reason -- a column of them lines up. */
+.mono { font-family: var(--mono); font-size: var(--t-small); }
+
+
+/* Links in the footer. Without this they inherit the browser default -- a
+ * bright underlined blue in a monospace face, which reads as broken. */
+.foot a { color: var(--ink-dim); text-decoration: none; }
+.foot a:hover { color: var(--ink); text-decoration: underline; }
+
+/* The drop target on the stripped-back view. Large on purpose: it is the one
+ * action on the page, so it should not look like a form field. */
+.totals.one { grid-template-columns: 1fr; }
+
+.drop {
+  display: grid; place-items: center; gap: 4px;
+  margin-top: 12px; padding: 30px 20px; cursor: pointer; text-align: center;
+  background: var(--panel-2); border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+.drop:hover, .drop.over { border-color: var(--accent); }
+.drop input[type="file"] {
+  /* Hidden but reachable: the label wraps it, so a click or a keyboard
+   * activation still opens the picker, and it stays in the tab order. */
+  position: absolute; width: 1px; height: 1px; opacity: 0;
+}
+.dropBig { font-size: var(--t-mid); color: var(--ink); }
+.dropSmall { color: var(--ink-faint); font-size: var(--t-small); }
+
+/* The reading: the image beside the fields, stacking on a narrow screen. */
+.readingTop {
+  display: grid; grid-template-columns: auto 1fr; gap: 16px;
+  align-items: start; margin-top: 14px;
+}
+.readingFields { min-width: 0; }
+@media (max-width: 700px) {
+  .readingTop { grid-template-columns: 1fr; }
+}
+
+.shotImage {
+  display: block; max-width: 220px; max-height: 300px;
+  border: 1px solid var(--line); border-radius: 8px;
 }

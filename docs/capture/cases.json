@@ -1,0 +1,816 @@
+{
+  "today": "2026-09-09",
+  "cases": [
+    {
+      "why": "the amount is the tallest, not the first",
+      "boxes": [
+        {
+          "text": "Reference 8842-QK",
+          "left": 24,
+          "top": 10,
+          "width": 136,
+          "height": 12,
+          "confidence": 0.85
+        },
+        {
+          "text": "Card fee 1,50 EUR",
+          "left": 24,
+          "top": 40,
+          "width": 136,
+          "height": 12,
+          "confidence": 0.85
+        },
+        {
+          "text": "-52,30 EUR",
+          "left": 24,
+          "top": 80,
+          "width": 80,
+          "height": 34,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 5230,
+          "plain": "52.30",
+          "currency": "EUR"
+        },
+        "amounts": [
+          5230,
+          150
+        ],
+        "date": null,
+        "merchant": "Reference 8842-QK",
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a real card screen, spaces eaten by the engine",
+      "boxes": [
+        {
+          "text": "Transaction",
+          "left": 24,
+          "top": 44,
+          "width": 88,
+          "height": 16,
+          "confidence": 0.85
+        },
+        {
+          "text": "REWE SAGTDANKE",
+          "left": 24,
+          "top": 80,
+          "width": 112,
+          "height": 20,
+          "confidence": 0.85
+        },
+        {
+          "text": "-52,30 EUR",
+          "left": 24,
+          "top": 188,
+          "width": 80,
+          "height": 34,
+          "confidence": 0.85
+        },
+        {
+          "text": "8September2026at14:32",
+          "left": 24,
+          "top": 237,
+          "width": 168,
+          "height": 14,
+          "confidence": 0.85
+        },
+        {
+          "text": "CIBC Dividend Visa *4417",
+          "left": 24,
+          "top": 305,
+          "width": 192,
+          "height": 12,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 5230,
+          "plain": "52.30",
+          "currency": "EUR"
+        },
+        "amounts": [
+          5230
+        ],
+        "date": {
+          "iso": "2026-09-08",
+          "ambiguous": false,
+          "alternative": null
+        },
+        "merchant": "REWE SAGTDANKE",
+        "card_mask": "4417",
+        "needs": []
+      }
+    },
+    {
+      "why": "a payment confirmation, euro sign dropped",
+      "boxes": [
+        {
+          "text": "Payment successful",
+          "left": 24,
+          "top": 42,
+          "width": 144,
+          "height": 19,
+          "confidence": 0.85
+        },
+        {
+          "text": "Amount",
+          "left": 24,
+          "top": 99,
+          "width": 48,
+          "height": 16,
+          "confidence": 0.85
+        },
+        {
+          "text": "18,90",
+          "left": 24,
+          "top": 128,
+          "width": 40,
+          "height": 27,
+          "confidence": 0.64
+        },
+        {
+          "text": "Cafe Nero Alexanderplatz",
+          "left": 24,
+          "top": 208,
+          "width": 192,
+          "height": 19,
+          "confidence": 0.85
+        },
+        {
+          "text": "07/09/2026",
+          "left": 24,
+          "top": 285,
+          "width": 80,
+          "height": 17,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 1890,
+          "plain": "18.90",
+          "currency": null
+        },
+        "amounts": [
+          1890
+        ],
+        "date": {
+          "iso": "2026-09-07",
+          "ambiguous": true,
+          "alternative": "2026-07-09"
+        },
+        "merchant": "Cafe Nero Alexanderplatz",
+        "card_mask": null,
+        "needs": [
+          "currency",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a year is not an amount",
+      "boxes": [
+        {
+          "text": "2026",
+          "left": 24,
+          "top": 0,
+          "width": 32,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a time is not an amount",
+      "boxes": [
+        {
+          "text": "14:32",
+          "left": 24,
+          "top": 0,
+          "width": 40,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a card's last four is not an amount",
+      "boxes": [
+        {
+          "text": "4417",
+          "left": 24,
+          "top": 0,
+          "width": 32,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "an exchange rate is not an amount",
+      "boxes": [
+        {
+          "text": "1.64321",
+          "left": 24,
+          "top": 0,
+          "width": 56,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a dollar sign is not resolved",
+      "boxes": [
+        {
+          "text": "$85.94",
+          "left": 24,
+          "top": 0,
+          "width": 48,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 8594,
+          "plain": "85.94",
+          "currency": null
+        },
+        "amounts": [
+          8594
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "currency",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a euro sign is",
+      "boxes": [
+        {
+          "text": "€3.50",
+          "left": 24,
+          "top": 0,
+          "width": 40,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 350,
+          "plain": "3.50",
+          "currency": "EUR"
+        },
+        "amounts": [
+          350
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a code after the figure",
+      "boxes": [
+        {
+          "text": "52.30 EUR",
+          "left": 24,
+          "top": 0,
+          "width": 72,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 5230,
+          "plain": "52.30",
+          "currency": "EUR"
+        },
+        "amounts": [
+          5230
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a code before the figure",
+      "boxes": [
+        {
+          "text": "EUR 52.30",
+          "left": 24,
+          "top": 0,
+          "width": 72,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 5230,
+          "plain": "52.30",
+          "currency": "EUR"
+        },
+        "amounts": [
+          5230
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "CA$ is Canadian",
+      "boxes": [
+        {
+          "text": "CA$85.94",
+          "left": 24,
+          "top": 0,
+          "width": 64,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 8594,
+          "plain": "85.94",
+          "currency": "CAD"
+        },
+        "amounts": [
+          8594
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "US$ is American",
+      "boxes": [
+        {
+          "text": "US$85.94",
+          "left": 24,
+          "top": 0,
+          "width": 64,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 8594,
+          "plain": "85.94",
+          "currency": "USD"
+        },
+        "amounts": [
+          8594
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "comma decimals",
+      "boxes": [
+        {
+          "text": "1.234,56",
+          "left": 24,
+          "top": 0,
+          "width": 64,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 123456,
+          "plain": "1234.56",
+          "currency": null
+        },
+        "amounts": [
+          123456
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "currency",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "point decimals",
+      "boxes": [
+        {
+          "text": "1,234.56",
+          "left": 24,
+          "top": 0,
+          "width": 64,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 123456,
+          "plain": "1234.56",
+          "currency": null
+        },
+        "amounts": [
+          123456
+        ],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "currency",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "an ISO date",
+      "boxes": [
+        {
+          "text": "2026-09-08",
+          "left": 24,
+          "top": 0,
+          "width": 80,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": {
+          "iso": "2026-09-08",
+          "ambiguous": false,
+          "alternative": null
+        },
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "why": "a written date",
+      "boxes": [
+        {
+          "text": "8 September 2026",
+          "left": 24,
+          "top": 0,
+          "width": 128,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": {
+          "iso": "2026-09-08",
+          "ambiguous": false,
+          "alternative": null
+        },
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "why": "a month-first date",
+      "boxes": [
+        {
+          "text": "Sep 8, 2026",
+          "left": 24,
+          "top": 0,
+          "width": 88,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": {
+          "iso": "2026-09-08",
+          "ambiguous": false,
+          "alternative": null
+        },
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "why": "an unambiguous slash date",
+      "boxes": [
+        {
+          "text": "25/12/2025",
+          "left": 24,
+          "top": 0,
+          "width": 80,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": {
+          "iso": "2025-12-25",
+          "ambiguous": false,
+          "alternative": null
+        },
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "why": "a future date is not a purchase",
+      "boxes": [
+        {
+          "text": "8 September 2062",
+          "left": 24,
+          "top": 0,
+          "width": 128,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": "8 September 2062",
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a distant past date is not either",
+      "boxes": [
+        {
+          "text": "8 September 1994",
+          "left": 24,
+          "top": 0,
+          "width": 128,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": "8 September 1994",
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "an impossible date",
+      "boxes": [
+        {
+          "text": "31 February 2026",
+          "left": 24,
+          "top": 0,
+          "width": 128,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": "31 February 2026",
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a label is not a merchant",
+      "boxes": [
+        {
+          "text": "Payment successful",
+          "left": 24,
+          "top": 10,
+          "width": 144,
+          "height": 22,
+          "confidence": 0.85
+        },
+        {
+          "text": "Amount",
+          "left": 24,
+          "top": 50,
+          "width": 48,
+          "height": 20,
+          "confidence": 0.85
+        },
+        {
+          "text": "18,90",
+          "left": 24,
+          "top": 80,
+          "width": 40,
+          "height": 30,
+          "confidence": 0.85
+        },
+        {
+          "text": "Cafe Nero Alexanderplatz",
+          "left": 24,
+          "top": 140,
+          "width": 192,
+          "height": 19,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": {
+          "minor": 1890,
+          "plain": "18.90",
+          "currency": null
+        },
+        "amounts": [
+          1890
+        ],
+        "date": null,
+        "merchant": "Cafe Nero Alexanderplatz",
+        "card_mask": null,
+        "needs": [
+          "currency",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a mostly numeric line is not a merchant",
+      "boxes": [
+        {
+          "text": "4417 8842 1120",
+          "left": 24,
+          "top": 10,
+          "width": 112,
+          "height": 30,
+          "confidence": 0.85
+        },
+        {
+          "text": "Kaufland",
+          "left": 24,
+          "top": 60,
+          "width": 64,
+          "height": 14,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": "Kaufland",
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "a zero amount is nothing",
+      "boxes": [
+        {
+          "text": "0,00 EUR",
+          "left": 24,
+          "top": 0,
+          "width": 64,
+          "height": 30,
+          "confidence": 0.85
+        }
+      ],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": "0,00 EUR",
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    },
+    {
+      "why": "nothing at all",
+      "boxes": [],
+      "expect": {
+        "amount": null,
+        "amounts": [],
+        "date": null,
+        "merchant": null,
+        "card_mask": null,
+        "needs": [
+          "amount",
+          "date"
+        ]
+      }
+    }
+  ]
+}

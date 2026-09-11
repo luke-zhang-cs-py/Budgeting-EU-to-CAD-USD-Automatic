@@ -5,3 +5,12 @@ Flask>=3.0,<4
 
 # Tests only.
 pytest>=7.4,<10
+
+# Also tests only, and less optional than they look. `coverage` is what
+# tests/test_published_figures.py measures statement counts with, so without
+# it that test errors rather than skips -- and CI installs exactly this file
+# and nothing else. pytest-cov is what the command in the README and
+# CONTRIBUTING asks for, which a fresh clone could not actually run until it
+# was named here.
+coverage>=7.0
+pytest-cov>=4.0

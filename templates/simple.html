@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<title>Wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="plain">
+
+<header class="top">
+  <div class="brand">
+    <h1>Wallet</h1>
+    <p class="sub" id="monthLabel">—</p>
+  </div>
+  <div class="topRight">
+    <a class="ghost button" href="{{ url_for('index') }}">Everything else</a>
+  </div>
+</header>
+
+<!-- One figure. The CAD and USD conversions live on the full page; this view
+     answers "what have I spent this month" and nothing else. -->
+<section class="totals one">
+  <div class="total">
+    <span class="label">Spent this month</span>
+    <strong class="figure" id="spentEur">—</strong>
+  </div>
+</section>
+
+<p class="notice" id="notice" hidden></p>
+
+<main>
+
+<!-- ------------------------------------------------------- the whole point -->
+<section class="card">
+  <h2>Photograph a purchase</h2>
+  <p class="hint">
+    A card app's transaction detail, a payment confirmation, a till receipt.
+    It is read here on this machine &mdash; the picture is not sent anywhere.
+  </p>
+
+  <label class="drop" id="drop" for="shotFile">
+    <input type="file" id="shotFile" accept="image/*" capture="environment">
+    <span class="dropBig" id="dropBig">Choose or drop an image</span>
+    <span class="dropSmall">or paste one with Ctrl&#8209;V</span>
+  </label>
+
+  <!-- What it read, for a glance before it is recorded. Pre-filled, so this
+       is one look and one button -- but it is still a look, because an OCR
+       misread that books EUR 5,230 instead of EUR 52.30 is discovered a month
+       later in a total nobody can explain. -->
+  <div id="reading" hidden>
+    <div class="readingTop">
+      <img id="shotImage" class="shotImage" alt="the image you chose">
+      <div class="readingFields">
+        <div id="needs" class="needs" hidden></div>
+        <form id="saveForm" class="row">
+          <label class="field">
+            <span>Amount (EUR)</span>
+            <input id="amount" inputmode="decimal" required>
+          </label>
+          <label class="field">
+            <span>Date</span>
+            <input id="date" type="date" required>
+          </label>
+          <label class="field grow">
+            <span>What was it</span>
+            <input id="description" required autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <input id="category" list="categoryList" placeholder="optional"
+                   autocomplete="off">
+          </label>
+          <div class="actions">
+            <button type="submit">Record it</button>
+            <button type="button" class="ghost" id="discard">Discard</button>
+          </div>
+        </form>
+        <p class="hint" id="candidates"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="cardHead">
+    <h2>Lately</h2>
+    <span class="hint" id="recentNote"></span>
+  </div>
+  <table class="grid">
+    <thead>
+      <tr><th>Date</th><th>What</th><th class="num">EUR</th><th></th></tr>
+    </thead>
+    <tbody id="recentBody"></tbody>
+  </table>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>Read on this machine &mdash; the image is not uploaded anywhere.</span>
+  <span><a href="{{ url_for('index') }}">Budgets, importing, cards, dollars
+    and the rest &rarr;</a></span>
+</footer>
+
+<datalist id="categoryList"></datalist>
+
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/simple.js') }}"></script>
+</body>
+</html>

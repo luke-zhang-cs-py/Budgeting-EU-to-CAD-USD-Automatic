@@ -99,10 +99,23 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-Both clean before a push -- 759 tests, 100% of 2,346 statements. The cases
-most worth adding to are the awkward ones: a bank format that imports wrong, a
-holiday the rate lookback handles badly, an amount that parses to the wrong
-magnitude, a screenshot the parser reads as a year.
+Both clean before a push. The cases most worth adding to are the awkward
+ones: a bank format that imports wrong, a holiday the rate lookback handles
+badly, an amount that parses to the wrong magnitude, a screenshot the parser
+reads as a year.
+
+**Adding a test moves two published figures**, because the README and the
+overview page both quote the suite's size and
+`tests/test_published_figures.py` checks that they quote it correctly. Do not
+go hunting for them:
+
+```bash
+python tools/refresh_figures.py
+```
+
+It measures, rewrites both, and prints what it changed. A new test *file* is
+the one thing it will not finish on its own: add a row for it in the page's
+`TESTS` block saying what the file covers, and the script fills in the count.
 
 The optional OCR install is not needed to run them. `ocr.py` turns an image
 into text boxes and `receipts.py` turns boxes into a purchase, so the parser

@@ -22,6 +22,7 @@ import db         # noqa: E402
 import export     # noqa: E402
 import fetch      # noqa: E402
 import fxcost     # noqa: E402
+import app        # noqa: E402
 import fxlive     # noqa: E402
 import fxrates    # noqa: E402
 import goals      # noqa: E402
@@ -31,18 +32,55 @@ import money      # noqa: E402
 import layout     # noqa: E402
 import ocr        # noqa: E402
 import paths      # noqa: E402
+import ofx        # noqa: E402
 import receipts   # noqa: E402
+import sources    # noqa: E402
 import trends     # noqa: E402
 import upcoming   # noqa: E402
 
-# Every first-party module. A module left out of this tuple is one that none
-# of the guards below apply to, which is how a structural test quietly stops
-# covering the code it was written for -- so adding to it is part of adding a
-# module. The four feature modules and the three helpers were added at once
-# and the guards found real faults in them immediately.
+# Every first-party module that can be imported. A module left out of this
+# tuple is one that none of the guards below apply to, which is how a
+# structural test quietly stops covering the code it was written for -- so
+# adding to it is part of adding a module, and the test right below this
+# checks that nothing has been left out. The four feature modules and the
+# three helpers were added at once and the guards found real faults in them
+# immediately; the last three additions found two guards that had been
+# passing for the wrong reason.
 MODULES = (money, paths, fetch, ocr, auth, db, fxrates, fxcost, fxlive,
            layout, ledger, cards, receipts, importers, budgets, trends,
-           upcoming, goals, export)
+           upcoming, goals, export, app, ofx, sources)
+
+# The one module that cannot be in the tuple above. Importing wsgi.py builds
+# the application for 0.0.0.0, and auth.guard refuses to do that without a
+# password -- so `import wsgi` raises Unsafe by design, and a test module
+# that imported it could not be collected at all. That refusal is what
+# test_auth.py exists to check, and it is worth more than these guards would
+# add over five statements.
+NOT_IMPORTABLE = ("wsgi.py",)
+
+
+def test_the_list_above_is_every_module():
+    """The guard on the list.
+
+    Each test below iterates MODULES, so a module missing from it is one that
+    none of them apply to. That had happened to four of them -- app.py,
+    ofx.py, sources.py and wsgi.py -- while the comment above claimed the
+    tuple was every first-party module. Adding the three importable ones
+    immediately found two guards that had been passing for the wrong reason.
+    """
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    on_disk = {name for name in os.listdir(here) if name.endswith(".py")}
+    listed = {module.__name__ + ".py" for module in MODULES}
+
+    assert on_disk - listed - set(NOT_IMPORTABLE) == set(), (
+        "these modules are in the project but in none of the structural "
+        f"guards: {sorted(on_disk - listed - set(NOT_IMPORTABLE))}")
+    assert listed <= on_disk, (
+        f"the list names modules that no longer exist: {sorted(listed - on_disk)}")
+    for name in NOT_IMPORTABLE:
+        assert name in on_disk, (
+            f"{name} is exempted from the guards but is no longer here -- "
+            f"drop it from NOT_IMPORTABLE")
 
 
 def _code_of(module):
@@ -226,7 +264,12 @@ def test_nothing_imports_inside_a_function():
     A local import hides the dependency from anyone reading the imports."""
     for module in MODULES:
         allowed = DEFERRED_IMPORTS_ALLOWED.get(module.__name__, ())
-        for line in inspect.getsource(module).splitlines():
+        # _code_of, not the source as written. This read the raw source until
+        # app.py joined the list above, and then matched a docstring line that
+        # happened to wrap onto the word "from" -- the fourth time in this
+        # project that a grep over source has tripped on prose describing the
+        # thing it greps for, which is what that helper exists to stop.
+        for line in _code_of(module).splitlines():
             if re.match(r"\s+(import|from)\s+[a-z_]", line):
                 if "typing" in line or any(name in line for name in allowed):
                     continue
@@ -311,11 +354,18 @@ def test_nothing_reaches_through_one_module_to_another():
     broken silently the day importers stopped needing ledger. Distinct from
     the private-name test above: these names are all public, and the fault is
     the route taken to them."""
-    import sources
-    names = [m.__name__ for m in MODULES] + ["sources", "fxcost"]
-    for module in list(MODULES) + [sources]:
+    # Every module is checked as a subject, app.py included. It is not
+    # checked as a *target*, because "app" is also what every Flask instance
+    # in this project is called: `app.config.get(...)` inside auth.configure
+    # is a parameter, not a reach through the app module, and no pattern over
+    # text can tell those two apart. Dropping it from the targets loses very
+    # little -- app.py is the top layer, so nothing below it names the module
+    # at all.
+    targets = [module.__name__ for module in MODULES
+               if module.__name__ != "app"] + ["fxcost"]
+    for module in MODULES:
         code = _code_of(module)
-        for other in names:
+        for other in targets:
             if other == module.__name__:
                 continue
             found = re.findall(rf"\b{other}\.[a-z_]+\.[a-z_]+\(", code)

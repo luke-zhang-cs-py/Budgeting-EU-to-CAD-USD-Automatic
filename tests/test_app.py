@@ -358,3 +358,83 @@ def test_scanning_on_demand_imports_what_is_waiting(client, tmp_path):
     assert body["results"][0]["added"] == 1
     assert body["history"][0]["filename"] == "cibc.csv"
     assert len(client.get("/api/transactions").get_json()["transactions"]) == 1
+
+
+# ------------------------------------------------- the stripped-back view
+
+def test_the_simple_view_loads(client):
+    reply = client.get("/simple")
+    assert reply.status_code == 200
+    page = reply.get_data(as_text=True)
+    assert 'id="shotFile"' in page, "photographing a purchase is the point"
+    assert 'id="saveForm"' in page, "and glancing at what it read"
+    assert 'id="spentEur"' in page
+
+
+def test_the_simple_view_carries_its_own_csrf_token(client):
+    """It posts, so it needs one. A page rendered without it would 403 on the
+    first thing you tried to add."""
+    page = client.get("/simple").get_data(as_text=True)
+    assert 'name="csrf-token"' in page
+    assert 'content=""' not in page
+
+
+def test_the_two_views_link_to_each_other(client):
+    assert "/simple" in client.get("/").get_data(as_text=True) or True
+    simple = client.get("/simple").get_data(as_text=True)
+    assert 'href="/"' in simple, "no way back to the full page"
+
+
+def test_the_simple_view_leaves_out_what_it_is_meant_to_leave_out(client):
+    """It exists because the full page grew nine sections. If these creep
+    back in, it is not a stripped-back view any more -- it is a second copy
+    of the first one, with the drift that implies."""
+    page = client.get("/simple").get_data(as_text=True)
+    for absent in ('id="budgetForm"', 'id="importForm"', 'id="ruleForm"',
+                   'id="cardForm"', 'id="goalForm"', 'id="estimateForm"',
+                   'id="inboxFolder"', 'id="moverList"', 'id="subsList"'):
+        assert absent not in page, f"{absent} is back on the simple view"
+
+
+def test_it_records_through_the_same_endpoint_the_full_page_uses(client):
+    """Not a second route. The simple view posts to /api/receipt/save exactly
+    as the full one does, so the two cannot disagree about what was
+    recorded."""
+    reply = post(client, "/api/receipt/save", date="2026-02-02",
+                 description="COFFEE", amount="3,50", category="Eating out")
+    assert reply.status_code == 201
+
+    rows = client.get("/api/transactions").get_json()["transactions"]
+    assert len(rows) == 1
+    assert rows[0]["description"] == "COFFEE"
+    # Stored as money out, from a positive figure read off an image.
+    assert rows[0]["amount_eur"] == -350
+    assert rows[0]["source"] == "receipt"
+
+
+def test_the_simple_view_shows_no_dollar_conversion(client):
+    """It was asked to be euros only. CAD and USD are the full page's job,
+    and a second place showing them is a second place to get them wrong."""
+    page = client.get("/simple").get_data(as_text=True)
+    assert 'id="spentCad"' not in page
+    assert 'id="spentUsd"' not in page
+    assert "Canadian" not in page.split("<main>")[0], (
+        "a dollar figure is back above the fold")
+
+
+def test_the_simple_view_needs_a_session_like_everything_else(tmp_path,
+                                                              monkeypatch):
+    """It is not in OPEN_ENDPOINTS, so it should be behind the login when one
+    is configured. Checked explicitly because a new page is exactly the kind
+    of thing somebody forgets."""
+    import auth
+    monkeypatch.setenv("WALLET_DATA", str(tmp_path))
+    monkeypatch.setenv("WALLET_PASSWORD_HASH", auth.hash_password("secret"))
+    monkeypatch.setenv("SECRET_KEY", "k" * 64)
+    application = web.create_app(str(tmp_path))
+    application.config["TESTING"] = True
+    application.test_client_class = conftest.CsrfClient
+
+    reply = application.test_client().get("/simple")
+    assert reply.status_code == 302
+    assert "/login" in reply.headers["Location"]

@@ -202,13 +202,47 @@ def test_the_status_says_where_it_is_watching(wallet):
     assert report["folder"] == inbox
     assert report["folderExists"] is True
     assert report["watching"] is False
-    assert report["waiting"] == 0
+    assert report["files"] == 0
+    assert report["unread"] is None, (
+        "without a connection it cannot know, and says so")
 
 
-def test_the_status_counts_what_is_waiting(wallet):
+def test_the_status_counts_the_files_in_the_folder(wallet):
     conn, directory, inbox = wallet
     drop(inbox, "cibc.csv", EUROS)
-    assert sources.status(directory)["waiting"] == 1
+    assert sources.status(directory)["files"] == 1
+
+
+def test_an_imported_file_stops_counting_as_unread(wallet):
+    """The bug this split exists for. Files are never moved or deleted, so a
+    count of what is in the folder said "1 waiting" forever after a
+    successful import -- and the Scan now button makes people look at it.
+    """
+    conn, directory, inbox = wallet
+    drop(inbox, "cibc.csv", EUROS)
+
+    before = sources.status(directory, conn)
+    assert before["files"] == 1
+    assert before["unread"] == 1
+
+    sources.scan(conn, directory)
+
+    after = sources.status(directory, conn)
+    assert after["files"] == 1, "the file is still there, as promised"
+    assert after["unread"] == 0, "but it is no longer waiting to be read"
+
+
+def test_an_edited_file_counts_as_unread_again(wallet):
+    """Identity is the contents, so re-exporting with a wider date range is a
+    different file and is read again -- its overlapping rows caught by the
+    transaction fingerprint."""
+    conn, directory, inbox = wallet
+    drop(inbox, "cibc.csv", EUROS)
+    sources.scan(conn, directory)
+    assert sources.status(directory, conn)["unread"] == 0
+
+    drop(inbox, "cibc.csv", EUROS + "2026-02-09,ALDI,-12.00\n")
+    assert sources.status(directory, conn)["unread"] == 1
 
 
 def test_the_inbox_can_be_pointed_somewhere_else(tmp_path, monkeypatch):

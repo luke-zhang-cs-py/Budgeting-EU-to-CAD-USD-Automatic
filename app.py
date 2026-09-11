@@ -204,6 +204,16 @@ def _pages(app, ctx):
     def index():
         return render_template("index.html", csrf_token=auth.csrf_token())
 
+    @app.route("/simple")
+    def simple():
+        """The stripped-back view: the figures, and adding to them.
+
+        A different arrangement of the same data, not a second app. It calls
+        the same endpoints, so there is no way for it to disagree with the
+        full page about what a month's spending is.
+        """
+        return render_template("simple.html", csrf_token=auth.csrf_token())
+
 
 def _reading(app, ctx):
     @app.route("/api/overview")
@@ -226,7 +236,7 @@ def _reading(app, ctx):
                 # were billed in something other than euros.
                 "fx": fxcost.summarise(ledger.transactions(
                     conn, month=month, directory=ctx.directory)),
-                "inbox": sources.status(ctx.directory),
+                "inbox": sources.status(ctx.directory, conn),
             })
 
     @app.route("/api/transactions")
@@ -385,7 +395,7 @@ def _watching(app, ctx):
     def sources_status():
         """Where the watched folder is, and what the last sweep did."""
         with ctx.connect() as conn:
-            return jsonify({"inbox": sources.status(ctx.directory),
+            return jsonify({"inbox": sources.status(ctx.directory, conn),
                             "history": sources.history(conn)})
 
     @app.route("/api/sources/scan", methods=["POST"])
@@ -397,7 +407,7 @@ def _watching(app, ctx):
                 use_file_categories=_flag(
                     request.form.get("use_file_categories")))
             return jsonify({"results": results,
-                            "inbox": sources.status(ctx.directory),
+                            "inbox": sources.status(ctx.directory, conn),
                             "history": sources.history(conn)})
 
 

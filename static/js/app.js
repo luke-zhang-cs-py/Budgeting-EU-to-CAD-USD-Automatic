@@ -1,81 +1,14 @@
-/* Wallet — the browser half.
+/* Wallet — the full view.
  *
- * Everything that reaches the DOM goes through esc(). Transaction
- * descriptions come from a bank CSV, which is untrusted input by any
- * reasonable definition, and the face-recognition app in this family shipped
- * a stored XSS hole by putting registered names straight into innerHTML.
- * Same shape of bug, same fix, applied from the start this time.
+ * The helpers it uses -- esc, el, say, send, api, postJson -- live in
+ * common.js, which loads first. They moved there when the stripped-back view
+ * appeared and needed the same four things; see the note at the top of that
+ * file for why esc in particular must exist only once.
  */
 
 'use strict';
 
 var state = { month: null, categories: [], mapping: null, headers: [] };
-
-/* --------------------------------------------------------------- helpers */
-
-function esc(value) {
-  if (value === null || value === undefined) return '';
-  return String(value)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function el(id) { return document.getElementById(id); }
-
-function say(text, kind) {
-  var box = el('notice');
-  if (!text) { box.hidden = true; return; }
-  box.textContent = text;
-  box.className = 'notice' + (kind ? ' ' + kind : '');
-  box.hidden = false;
-}
-
-/* The session token, read once from the meta tag the server rendered.
- * Attached to every state-changing request by send(), so no call site has to
- * remember -- forgetting it at one of nineteen call sites would be a 403
- * somebody debugs for an hour. */
-var CSRF = (document.querySelector('meta[name="csrf-token"]') || {})
-  .content || '';
-
-var UNSAFE = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
-
-function send(url, options) {
-  var settings = options || {};
-  var method = (settings.method || 'GET').toUpperCase();
-  if (UNSAFE[method]) {
-    settings.headers = settings.headers || {};
-    settings.headers['X-CSRF-Token'] = CSRF;
-  }
-  return fetch(url, settings);
-}
-
-function api(url, options) {
-  return send(url, options).then(function (reply) {
-    return reply.json().then(function (body) {
-      if (reply.status === 401 && body.login) {
-        /* The session went away -- expired, or signed out in another tab.
-         * Reloading lands on the login page rather than leaving the screen
-         * showing figures that are no longer being refreshed. */
-        window.location.reload();
-        throw new Error('signed out');
-      }
-      if (!reply.ok) throw new Error(body.error || ('HTTP ' + reply.status));
-      return body;
-    });
-  });
-}
-
-function postJson(url, body) {
-  return api(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-}
-
-/* Money already arrives formatted from the server, which is deliberate:
- * formatting it again here would be a second implementation of the same
- * rounding, and the two would drift. */
 
 /* ------------------------------------------------------------- overview */
 
@@ -195,11 +128,6 @@ function drawRecurring(rows) {
   }).join('');
 }
 
-function drawCategories(categories) {
-  el('categoryList').innerHTML = categories.map(function (c) {
-    return '<option value="' + esc(c) + '"></option>';
-  }).join('');
-}
 
 /* What the card's own conversion cost, over the rows that had a foreign
  * original. Hidden entirely when there are none -- a zero would imply the
@@ -225,9 +153,15 @@ function drawInbox(inbox, results) {
     ? 'watching every ' + inbox.intervalSeconds + 's'
     : (inbox.folderExists ? 'not watching — start the app to enable it'
                           : 'folder does not exist yet');
-  el('inboxWaiting').textContent = inbox.waiting
-    ? inbox.waiting + ' file(s) waiting'
-    : 'nothing waiting';
+  /* Two different facts, because they answer different questions: how many
+   * files are sitting there, and how many of them have not been read. They
+   * used to be one number called "waiting" that counted files present, so it
+   * said "1 waiting" forever after a successful import. */
+  el('inboxWaiting').textContent = inbox.unread
+    ? inbox.unread + ' of ' + inbox.files + ' file(s) not read yet'
+    : (inbox.files
+        ? inbox.files + ' file(s), all read'
+        : 'folder is empty');
 
   var lines = (results || []).map(function (r) {
     var what = r.status === 'imported'
@@ -482,6 +416,33 @@ function wire() {
   el('search').addEventListener('input', function () {
     updateDownloadLinks();
     loadTransactions();
+  });
+
+  /* Scan now had an id, a label, and no handler at all. The endpoint existed,
+   * was tested server-side and was in the README; clicking the button did
+   * nothing. Found by the dead-id guard in test_frontend.py -- the same shape
+   * as the reconcile check in the Tally app, where an empty element was
+   * hiding a feature nobody had connected. */
+  el('scanNow').addEventListener('click', function () {
+    var button = this;
+    button.disabled = true;
+    button.textContent = 'Scanning…';
+    api('/api/sources/scan', { method: 'POST' }).then(function (body) {
+      var results = body.results || [];
+      var added = results.reduce(function (total, one) {
+        return total + (one.added || 0);
+      }, 0);
+      say(results.length
+        ? results.length + ' file(s) read, ' + added + ' added.'
+        : 'Nothing waiting in the folder.', added ? 'good' : '');
+      drawInbox(body.inbox, results);
+      return refresh();
+    }).catch(function (bad) {
+      say(bad.message, 'bad');
+    }).then(function () {
+      button.disabled = false;
+      button.textContent = 'Scan now';
+    });
   });
 
   el('refreshRates').addEventListener('click', function () {

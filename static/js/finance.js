@@ -89,8 +89,8 @@ function showReading(reading) {
     el('shotCharged').value = reading.amount.plain;
   }
 
-  drawNeeds(reading);
-  drawCandidates(reading);
+  showNotes('shotNeeds', readingNotes(reading, { fillsToday: false }));
+  showCandidates('shotCandidates', reading, 'screenshot');
 
   var image = el('shotImage');
   if (fin.stored) {
@@ -101,62 +101,15 @@ function showReading(reading) {
   }
 }
 
-/* Say plainly what could not be settled, and why it could not.
+/* Saying what could not be settled, and offering the other figures found,
+ * both live in common.js now. Each existed here and again in simple.js --
+ * the trickiest prose in the app, written twice, where a change to how an
+ * ambiguous date is explained would have had to be made in both or would
+ * have drifted.
  *
- * Naming the reason matters more than flagging the field. "Is this the 7th of
- * September or the 9th of July?" is answerable; "check the date" is not. */
-function drawNeeds(reading) {
-  var box = el('shotNeeds');
-  var notes = [];
-
-  if (reading.needs.indexOf('amount') >= 0) {
-    notes.push('No amount could be read — type it in.');
-  }
-  if (reading.needs.indexOf('currency') >= 0) {
-    notes.push('The amount had no currency on it' +
-      (reading.amount && reading.amount.marker
-        ? ' beyond "' + reading.amount.marker + '", which could be ' +
-          'Canadian or US'
-        : '') +
-      '. It is being treated as euros — change the figure if it was not.');
-  }
-  if (reading.date && reading.date.ambiguous) {
-    notes.push('The date could be ' + reading.date.iso + ' or ' +
-      reading.date.alternative + ' — nothing on the screenshot says ' +
-      'which. Pick one.');
-  } else if (reading.needs.indexOf('date') >= 0) {
-    notes.push('No date could be read — pick one.');
-  }
-  if (reading.amount && reading.amount.confidence < 0.7) {
-    notes.push('The engine was unsure of that figure (' +
-      Math.round(reading.amount.confidence * 100) + '% confident).');
-  }
-
-  /* Text nodes, not an HTML string. These sentences quote things read off
-   * the screenshot -- a currency marker, a date -- and the whole point of
-   * the panel is that the read was untrustworthy, so markup is the last
-   * place to put it. textContent cannot be markup, which is a stronger
-   * guarantee than remembering to escape. */
-  box.innerHTML = '';
-  notes.forEach(function (note) {
-    var line = document.createElement('p');
-    line.textContent = note;
-    box.appendChild(line);
-  });
-  box.hidden = notes.length === 0;
-}
-
-function drawCandidates(reading) {
-  var others = (reading.amounts || []).slice(1);
-  if (!others.length) { el('shotCandidates').textContent = ''; return; }
-  el('shotCandidates').innerHTML = 'Other figures on the screenshot: ' +
-    others.map(function (item) {
-      return '<button type="button" class="linky" data-amount="' +
-        esc(item.plain) + '">' + esc(item.text) + '</button>';
-    }).join(', ') +
-    '. The largest one is chosen, because that is where the amount goes on ' +
-    'a purchase screen — but it is a guess.';
-}
+ * `fillsToday: false` is the one difference between the two views: this one
+ * leaves the date field empty for you to pick, and the stripped-back one
+ * fills today in. */
 
 function saveScreenshot() {
   return postJson('/api/receipt/save', {

@@ -222,7 +222,7 @@
      not survive is worse than one that cannot read screenshots at all. -->
 <section class="card">
   <h2>Snap a purchase</h2>
-  <p class="hint" id="shotHint">
+  <p class="hint">
     Upload a screenshot of a purchase — a card app's transaction detail, a
     payment confirmation, a statement row. Everything read is shown for you to
     correct before anything is saved. The image never leaves this machine.
@@ -384,6 +384,10 @@
 
 <datalist id="categoryList"></datalist>
 
+<!-- common.js first: it defines esc, el, say and the request wrapper that
+     the other two use. One copy, because two escapers means the one that
+     gets fixed is not reliably the one that gets used. -->
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <!-- Loaded after app.js and reuses its esc/el/api/say. A second copy of those
      four helpers is the kind of duplication that drifts: this page already

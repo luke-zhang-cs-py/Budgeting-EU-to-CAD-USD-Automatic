@@ -175,8 +175,40 @@ def history(connection, limit=20):
         "ORDER BY id DESC LIMIT ?", (int(limit),))]
 
 
-def status(directory=None):
-    """Whether watching is on, where, and what the last sweep did."""
+def unread(connection, directory=None):
+    """How many files in the folder have not been imported yet.
+
+    Needs a connection, because "already read" is a row in the imports table
+    keyed by a digest of the contents -- not a property of the folder. Files
+    are never moved or deleted, so the folder alone cannot answer this.
+
+    Reads each file to digest it, which is the same work a sweep does and is
+    nothing for the handful of statements an inbox holds.
+    """
+    count = 0
+    for path, _name in candidates(directory):
+        try:
+            with open(path, "rb") as handle:
+                mark = digest(handle.read())
+        except OSError:                    # pragma: no cover - file vanished
+            continue
+        if not already_imported(connection, mark):
+            count += 1
+    return count
+
+
+def status(directory=None, connection=None):
+    """Whether watching is on, where, and what the last sweep did.
+
+    `files` counts what is in the folder. `unread` counts what has not been
+    imported, and is None without a connection, because that answer lives in
+    the database rather than on disk.
+
+    These were one key named `waiting`, which counted files present. Since an
+    imported file is never moved or deleted, it read "1 file waiting" forever
+    after a successful import -- a label reporting something other than what
+    it counted, on a figure the Scan now button now makes people look at.
+    """
     folder = inbox_dir(directory)
     with _lock:
         last = dict(_last)
@@ -185,7 +217,8 @@ def status(directory=None):
         "folder": folder,
         "folderExists": os.path.isdir(folder),
         "intervalSeconds": INTERVAL_SECONDS,
-        "waiting": len(candidates(directory)),
+        "files": len(candidates(directory)),
+        "unread": unread(connection, directory) if connection else None,
         "last": last,
     }
 

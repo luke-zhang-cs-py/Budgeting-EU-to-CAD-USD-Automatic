@@ -174,6 +174,39 @@ So it says what it could not settle, and why:
 | Prefers what the bank disclosed | `Foreign currency 52.30 EUR @ 1.64321` is the bank stating what it actually did — and 52.30 × 1.64321 is exactly the CA$85.94 it billed. |
 | Matches `••4417` to a card | So the right foreign-transaction fee applies. Two cards sharing a mask match neither. |
 
+### The same job with no server: the capture page
+
+There is a published version of just this one thing, at
+**[the capture page](https://luke-zhang-cs-py.github.io/Budgeting-EU-to-CAD-USD-Automatic/capture/)**.
+Open it on a phone, photograph a purchase, and it is read and recorded —
+nothing to install, nothing running anywhere. It is a static file on GitHub
+Pages, which is both why it is worth having and what limits it:
+
+| | The app | The capture page |
+|---|---|---|
+| Needs | Python, and a machine running it | a browser |
+| The reader | a local ONNX model, optional | `tesseract.js`, fetched once from a CDN |
+| Where purchases go | SQLite, on your machine | this browser's `localStorage` |
+| CAD/USD, budgets, cards, trends | yes | no — it records what you spent, nothing else |
+| Getting the two together | — | export the CSV, import it in the app |
+
+The CSV is the whole of the connection between them, so its four columns are
+the ones the importer recognises without being asked which is which, and an
+expense is negative. That is not left to documentation:
+`tests/test_shared_rules.py` writes a file with the page's own code in a real
+browser and reads it back with the app's own importer.
+
+The page cannot send a purchase anywhere, and that is mechanical rather than
+promised — its Content-Security-Policy names no server to send one to. The
+one thing it fetches is the reader, from `cdn.jsdelivr.net`, on the first
+image.
+
+The parsing rules therefore exist twice, which is the only duplication in
+this project: `receipts.py` on the server, `rules.js` in the browser. Both
+are checked against one shared fixture of 26 cases — Python here, JavaScript
+in a headless browser — so the two cannot come to disagree about what an
+amount is.
+
 ## What will this cost?
 
 The latest published euro rate, fetched when you ask, with your card's fee on
@@ -400,8 +433,11 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-759 tests, 100% of 2,346 statements. See [CONTRIBUTING.md](CONTRIBUTING.md)
-for the conventions and the one thing that will confuse you.
+802 tests, 100% of 2,358 statements. Those two figures are themselves
+checked — `tests/test_published_figures.py` measures them and compares, here
+and on the published page, because both had already gone stale once. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the one thing that
+will confuse you.
 
 The screenshot parser is tested without the OCR engine at all: `ocr.py` turns
 an image into text boxes, `receipts.py` turns boxes into a purchase, and the

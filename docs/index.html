@@ -6,7 +6,10 @@
 <title>Wallet — euro spending in CAD and USD — overview</title>
 <meta name="description" content="A local Flask app that converts euro spending at the rate that applied on the day it was spent, reads a purchase off a screenshot without the image leaving the machine, and measures what a card's foreign transaction fee actually costs.">
 <meta property="og:title" content="Wallet — euro spending in Canadian and US dollars">
-<meta property="og:description" content="759 tests, 100% coverage. Reads a purchase off a screenshot locally, and never records one unseen.">
+<!-- No count in here. A figure typed into a meta tag is one nothing on the
+     page derives, so it is the first thing to go stale -- this one named a
+     test count the suite had passed twice over. -->
+<meta property="og:description" content="Fully covered by tests. Reads a purchase off a screenshot locally, without the image leaving the machine, and never records one unseen.">
 <meta property="og:type" content="website">
 <style>
 /* The warm surface this family of pages uses. The marks on top come from the
@@ -85,6 +88,11 @@ button, .btn {
 }
 button:hover, .btn:hover { border-color: var(--ink-muted); }
 button[aria-pressed="true"] { border-color: var(--series); color: var(--series); }
+/* The one action here that works from this page. Border and text in the
+   series colour rather than a filled block: that is the pairing the palette
+   was validated for, and it is already this page's idiom for a button that
+   is on. */
+.btn.primary { border-color: var(--series); color: var(--series); }
 
 /* ------------------------------------------------------------ stat tiles */
 /* A bare stat tile is the one form that ships without a hover layer: there is
@@ -177,6 +185,11 @@ footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width
   <div class="controls">
     <button id="themeBtn" type="button">Theme</button>
     <button id="tableBtn" type="button" aria-pressed="false">Table view</button>
+    <!-- First, and the only one of the three that works from here: the
+         capture page is a static file beside this one, so it opens on a
+         phone with nothing installed and nothing running. -->
+    <a class="btn primary" href="capture/"
+       title="Photograph a purchase and record it, in the browser">Open the capture page</a>
     <a class="btn" href="https://github.com/luke-zhang-cs-py/Budgeting-EU-to-CAD-USD-Automatic">Repository</a>
     <a class="btn" id="localBtn" href="http://127.0.0.1:5004/"
        title="Only works on a machine that is running the app">Open app (local)</a>
@@ -427,53 +440,55 @@ footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width
  * `wc -l` in the repository. Not estimated. */
 
 var MODULES = [
-  { name: 'app.py',       lines: 921, stmts: 448, missed: 0, does: 'the web front end; 37 routes in 18 small groups' },
-  { name: 'auth.py',      lines: 320, stmts:  99, missed: 0, does: 'the password, the session, the CSRF token, the headers' },
-  { name: 'receipts.py',  lines: 482, stmts: 202, missed: 0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
-  { name: 'ledger.py',    lines: 469, stmts: 188, missed: 0, does: 'transactions, the duplicate rule, recurring detection' },
-  { name: 'cards.py',     lines: 406, stmts: 164, missed: 0, does: 'cards, their fees in basis points, and their balances' },
-  { name: 'importers.py', lines: 374, stmts: 160, missed: 0, does: 'reads a statement in whatever shape it arrives' },
-  { name: 'fxrates.py',   lines: 300, stmts: 148, missed: 0, does: 'ECB history, cached; the business-day lookback' },
-  { name: 'sources.py',   lines: 270, stmts: 116, missed: 0, does: 'the watched folder, and what it has already read' },
-  { name: 'layout.py',    lines: 266, stmts: 100, missed: 0, does: 'works out which column of a CSV is which' },
-  { name: 'db.py',        lines: 249, stmts:  39, missed: 0, does: 'six tables, and the additive migration' },
-  { name: 'goals.py',     lines: 235, stmts: 104, missed: 0, does: 'goals, derived from what the caps left over' },
-  { name: 'ofx.py',       lines: 212, stmts:  74, missed: 0, does: 'OFX/QFX, both dialects — the bank’s own rate' },
-  { name: 'budgets.py',   lines: 210, stmts:  80, missed: 0, does: 'a monthly cap per category, and pace against it' },
-  { name: 'trends.py',    lines: 201, stmts:  72, missed: 0, does: 'each category against its own average, with drilldown' },
-  { name: 'fxcost.py',    lines: 176, stmts:  49, missed: 0, does: 'what a conversion cost, and what the next will cost' },
-  { name: 'fxlive.py',    lines: 173, stmts:  75, missed: 0, does: 'the latest published rate, fetched on demand' },
-  { name: 'money.py',     lines: 166, stmts:  61, missed: 0, does: 'integer cents; the one parser and the one formatter' },
-  { name: 'upcoming.py',  lines: 160, stmts:  45, missed: 0, does: 'subscriptions: due, landed, lapsed, and price rises' },
-  { name: 'ocr.py',       lines: 152, stmts:  54, missed: 0, does: 'image to text boxes; the optional engine sits behind it' },
-  { name: 'export.py',    lines: 133, stmts:  40, missed: 0, does: 'the CSV, and whether it adds up to the ledger' },
-  { name: 'fetch.py',     lines:  52, stmts:  16, missed: 0, does: 'one way to get bytes: urllib, then curl' },
-  { name: 'paths.py',     lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' },
-  { name: 'wsgi.py',      lines:  40, stmts:   5, missed: 0, does: 'the entry point a real server uses; not the dev one' }
+  { name: 'app.py',          lines: 931, stmts: 451, missed: 0, does: 'the web front end; 37 routes in 18 small groups' },
+  { name: 'auth.py',         lines: 320, stmts:  99, missed: 0, does: 'the password, the session, the CSRF token, the headers' },
+  { name: 'receipts.py',     lines: 482, stmts: 202, missed: 0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
+  { name: 'ledger.py',       lines: 469, stmts: 188, missed: 0, does: 'transactions, the duplicate rule, recurring detection' },
+  { name: 'cards.py',        lines: 406, stmts: 164, missed: 0, does: 'cards, their fees in basis points, and their balances' },
+  { name: 'importers.py',    lines: 374, stmts: 160, missed: 0, does: 'reads a statement in whatever shape it arrives' },
+  { name: 'fxrates.py',      lines: 300, stmts: 148, missed: 0, does: 'ECB history, cached; the business-day lookback' },
+  { name: 'sources.py',      lines: 303, stmts: 125, missed: 0, does: 'the watched folder, and what it has already read' },
+  { name: 'layout.py',       lines: 266, stmts: 100, missed: 0, does: 'works out which column of a CSV is which' },
+  { name: 'db.py',           lines: 249, stmts:  39, missed: 0, does: 'six tables, and the additive migration' },
+  { name: 'goals.py',        lines: 235, stmts: 104, missed: 0, does: 'goals, derived from what the caps left over' },
+  { name: 'ofx.py',          lines: 212, stmts:  74, missed: 0, does: 'OFX/QFX, both dialects — the bank’s own rate' },
+  { name: 'budgets.py',      lines: 210, stmts:  80, missed: 0, does: 'a monthly cap per category, and pace against it' },
+  { name: 'trends.py',       lines: 201, stmts:  72, missed: 0, does: 'each category against its own average, with drilldown' },
+  { name: 'fxcost.py',       lines: 176, stmts:  49, missed: 0, does: 'what a conversion cost, and what the next will cost' },
+  { name: 'fxlive.py',       lines: 173, stmts:  75, missed: 0, does: 'the latest published rate, fetched on demand' },
+  { name: 'money.py',        lines: 166, stmts:  61, missed: 0, does: 'integer cents; the one parser and the one formatter' },
+  { name: 'upcoming.py',     lines: 160, stmts:  45, missed: 0, does: 'subscriptions: due, landed, lapsed, and price rises' },
+  { name: 'ocr.py',          lines: 152, stmts:  54, missed: 0, does: 'image to text boxes; the optional engine sits behind it' },
+  { name: 'export.py',       lines: 133, stmts:  40, missed: 0, does: 'the CSV, and whether it adds up to the ledger' },
+  { name: 'fetch.py',        lines:  52, stmts:  16, missed: 0, does: 'one way to get bytes: urllib, then curl' },
+  { name: 'paths.py',        lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' },
+  { name: 'wsgi.py',         lines:  40, stmts:   5, missed: 0, does: 'the entry point a real server uses; not the dev one' }
 ];
 
 var TESTS = [
-  { file: 'test_receipts.py',    n: 87, of: 'the screenshot parser, built from real engine output' },
-  { file: 'test_auth.py',        n: 60, of: 'the refusals: no password, no token, no session' },
-  { file: 'test_app_finance.py', n: 55, of: 'routes for screenshots, rates, cards and planning' },
-  { file: 'test_cibc.py',        n: 54, of: 'the headerless CIBC exports, all three layouts' },
-  { file: 'test_cards.py',       n: 53, of: 'fees, balances, and the exact-vs-estimated split' },
-  { file: 'test_planning.py',    n: 49, of: 'trends, subscriptions and goals' },
-  { file: 'test_rate_date.py',   n: 40, of: 'weekends, Easter, Christmas, and the lookback' },
-  { file: 'test_edges.py',       n: 39, of: 'the network ladder and malformed rate files' },
-  { file: 'test_ofx.py',         n: 37, of: 'both OFX dialects and the disclosed rate' },
-  { file: 'test_money.py',       n: 37, of: 'both decimal conventions, and never a silent zero' },
-  { file: 'test_app.py',         n: 34, of: 'the original HTTP surface' },
-  { file: 'test_ledger.py',      n: 33, of: 'the duplicate rule and recurring detection' },
-  { file: 'test_sources.py',     n: 26, of: 'the watched folder, and never importing twice' },
-  { file: 'test_importers.py',   n: 26, of: 'statements in whatever shape they arrive' },
-  { file: 'test_fxlive.py',      n: 26, of: 'two rate sources, and refusing an implausible one' },
-  { file: 'test_structure.py',   n: 22, of: 'the smells, guarded structurally' },
-  { file: 'test_budgets.py',     n: 21, of: 'caps, pace and the month boundary' },
-  { file: 'test_fxrates.py',     n: 17, of: 'the ECB history and its cache' },
-  { file: 'test_frontend.py',    n: 15, of: 'escaping, the type scale, one money formatter' },
-  { file: 'test_ocr.py',         n: 14, of: 'the engine wrapper, and life without it' },
-  { file: 'test_export.py',      n: 14, of: 'the file, and whether it reconciles' }
+  { file: 'test_receipts.py',          n: 87, of: 'the screenshot parser, built from real engine output' },
+  { file: 'test_auth.py',              n: 60, of: 'the refusals: no password, no token, no session' },
+  { file: 'test_app_finance.py',       n: 55, of: 'routes for screenshots, rates, cards and planning' },
+  { file: 'test_cibc.py',              n: 54, of: 'the headerless CIBC exports, all three layouts' },
+  { file: 'test_cards.py',             n: 53, of: 'fees, balances, and the exact-vs-estimated split' },
+  { file: 'test_planning.py',          n: 49, of: 'trends, subscriptions and goals' },
+  { file: 'test_app.py',               n: 41, of: 'the original HTTP surface' },
+  { file: 'test_rate_date.py',         n: 40, of: 'weekends, Easter, Christmas, and the lookback' },
+  { file: 'test_edges.py',             n: 39, of: 'the network ladder and malformed rate files' },
+  { file: 'test_frontend.py',          n: 37, of: 'escaping, dead ids and the type scale, over both bundles' },
+  { file: 'test_money.py',             n: 37, of: 'both decimal conventions, and never a silent zero' },
+  { file: 'test_ofx.py',               n: 37, of: 'both OFX dialects and the disclosed rate' },
+  { file: 'test_ledger.py',            n: 33, of: 'the duplicate rule and recurring detection' },
+  { file: 'test_sources.py',           n: 28, of: 'the watched folder, and never importing twice' },
+  { file: 'test_fxlive.py',            n: 26, of: 'two rate sources, and refusing an implausible one' },
+  { file: 'test_importers.py',         n: 26, of: 'statements in whatever shape they arrive' },
+  { file: 'test_structure.py',         n: 23, of: 'the smells, guarded structurally' },
+  { file: 'test_budgets.py',           n: 21, of: 'caps, pace and the month boundary' },
+  { file: 'test_fxrates.py',           n: 17, of: 'the ECB history and its cache' },
+  { file: 'test_export.py',            n: 14, of: 'the file, and whether it reconciles' },
+  { file: 'test_ocr.py',               n: 14, of: 'the engine wrapper, and life without it' },
+  { file: 'test_published_figures.py', n:  6, of: 'the numbers on this page, against the measurement' },
+  { file: 'test_shared_rules.py',      n:  5, of: 'the parser in both languages, against one shared fixture' }
 ];
 
 /* Authored prose with intentional markup, kept out of esc() deliberately --
@@ -599,7 +614,7 @@ var THREATS = [
 
 var RATE_HISTORY_DAYS = 7089;
 var TABLES = 6;
-var ROUTE_COUNT = 37;
+var ROUTE_COUNT = 38;
 var ROUTE_GROUPS = 18;
 var TEST_LINES = 7365;
 
