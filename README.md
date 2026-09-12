@@ -425,6 +425,15 @@ platform account is attached to it. They are written against each platform's
 documented schema, and the first `fly deploy` or the Render dashboard will
 tell you if a field name has moved since.
 
+What *is* checked is that they agree with everything they have to agree with.
+`tests/test_deployment.py` asserts the port both configs route to is the one
+the container exposes, that the volume is mounted exactly where
+`WALLET_DATA` points, that both pin a single instance, and that the health
+check names a route in `app.OPEN_ENDPOINTS` — because every other route needs
+a session, so a health check on one of those would have both platforms
+restarting a container that is working perfectly. Each of those was confirmed
+by breaking it and watching the test go red.
+
 ### HTTPS is the host's job, and the app assumes you did it
 
 Once `HOST` is not loopback the session cookie is marked `Secure`, so **it is
@@ -481,7 +490,7 @@ pytest -q --cov=. --cov-report=term-missing
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722,E741
 ```
 
-802 tests, 100% of 2,358 statements. Those two figures are themselves
+813 tests, 100% of 2,358 statements. Those two figures are themselves
 checked — `tests/test_published_figures.py` measures them and compares, here
 and on the published page, because both had already gone stale once. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the one thing that

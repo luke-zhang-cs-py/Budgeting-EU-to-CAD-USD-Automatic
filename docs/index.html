@@ -440,29 +440,29 @@ footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width
  * `wc -l` in the repository. Not estimated. */
 
 var MODULES = [
-  { name: 'app.py',       lines: 931, stmts: 451, missed: 0, does: 'the web front end; 37 routes in 18 small groups' },
-  { name: 'auth.py',      lines: 320, stmts:  99, missed: 0, does: 'the password, the session, the CSRF token, the headers' },
-  { name: 'receipts.py',  lines: 482, stmts: 202, missed: 0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
-  { name: 'ledger.py',    lines: 469, stmts: 188, missed: 0, does: 'transactions, the duplicate rule, recurring detection' },
-  { name: 'cards.py',     lines: 406, stmts: 164, missed: 0, does: 'cards, their fees in basis points, and their balances' },
-  { name: 'importers.py', lines: 374, stmts: 160, missed: 0, does: 'reads a statement in whatever shape it arrives' },
-  { name: 'fxrates.py',   lines: 300, stmts: 148, missed: 0, does: 'ECB history, cached; the business-day lookback' },
-  { name: 'sources.py',   lines: 303, stmts: 125, missed: 0, does: 'the watched folder, and what it has already read' },
-  { name: 'layout.py',    lines: 266, stmts: 100, missed: 0, does: 'works out which column of a CSV is which' },
-  { name: 'db.py',        lines: 249, stmts:  39, missed: 0, does: 'six tables, and the additive migration' },
-  { name: 'goals.py',     lines: 235, stmts: 104, missed: 0, does: 'goals, derived from what the caps left over' },
-  { name: 'ofx.py',       lines: 212, stmts:  74, missed: 0, does: 'OFX/QFX, both dialects — the bank’s own rate' },
-  { name: 'budgets.py',   lines: 210, stmts:  80, missed: 0, does: 'a monthly cap per category, and pace against it' },
-  { name: 'trends.py',    lines: 201, stmts:  72, missed: 0, does: 'each category against its own average, with drilldown' },
-  { name: 'fxcost.py',    lines: 176, stmts:  49, missed: 0, does: 'what a conversion cost, and what the next will cost' },
-  { name: 'fxlive.py',    lines: 173, stmts:  75, missed: 0, does: 'the latest published rate, fetched on demand' },
-  { name: 'money.py',     lines: 166, stmts:  61, missed: 0, does: 'integer cents; the one parser and the one formatter' },
-  { name: 'upcoming.py',  lines: 160, stmts:  45, missed: 0, does: 'subscriptions: due, landed, lapsed, and price rises' },
-  { name: 'ocr.py',       lines: 152, stmts:  54, missed: 0, does: 'image to text boxes; the optional engine sits behind it' },
-  { name: 'export.py',    lines: 133, stmts:  40, missed: 0, does: 'the CSV, and whether it adds up to the ledger' },
-  { name: 'fetch.py',     lines:  52, stmts:  16, missed: 0, does: 'one way to get bytes: urllib, then curl' },
-  { name: 'paths.py',     lines:  38, stmts:   7, missed: 0, does: 'where the data lives — one decision, one place' },
-  { name: 'wsgi.py',      lines:  40, stmts:   5, missed: 0, does: 'the entry point a real server uses; not the dev one' }
+  { name: 'app.py',       lines: 931, stmts: 451, missed:  0, does: 'the web front end; 37 routes in 18 small groups' },
+  { name: 'receipts.py',  lines: 482, stmts: 202, missed:  0, does: 'turns OCR text boxes into a purchase — pure, no engine' },
+  { name: 'ledger.py',    lines: 469, stmts: 188, missed:  0, does: 'transactions, the duplicate rule, recurring detection' },
+  { name: 'cards.py',     lines: 406, stmts: 164, missed:  0, does: 'cards, their fees in basis points, and their balances' },
+  { name: 'importers.py', lines: 374, stmts: 160, missed:  0, does: 'reads a statement in whatever shape it arrives' },
+  { name: 'fxrates.py',   lines: 300, stmts: 148, missed:  0, does: 'ECB history, cached; the business-day lookback' },
+  { name: 'sources.py',   lines: 303, stmts: 125, missed:  0, does: 'the watched folder, and what it has already read' },
+  { name: 'goals.py',     lines: 235, stmts: 104, missed:  0, does: 'goals, derived from what the caps left over' },
+  { name: 'layout.py',    lines: 266, stmts: 100, missed:  0, does: 'works out which column of a CSV is which' },
+  { name: 'auth.py',      lines: 320, stmts:  99, missed:  0, does: 'the password, the session, the CSRF token, the headers' },
+  { name: 'budgets.py',   lines: 210, stmts:  80, missed:  0, does: 'a monthly cap per category, and pace against it' },
+  { name: 'fxlive.py',    lines: 173, stmts:  75, missed:  0, does: 'the latest published rate, fetched on demand' },
+  { name: 'ofx.py',       lines: 212, stmts:  74, missed:  0, does: 'OFX/QFX, both dialects — the bank’s own rate' },
+  { name: 'trends.py',    lines: 201, stmts:  72, missed:  0, does: 'each category against its own average, with drilldown' },
+  { name: 'money.py',     lines: 166, stmts:  61, missed:  0, does: 'integer cents; the one parser and the one formatter' },
+  { name: 'ocr.py',       lines: 152, stmts:  54, missed:  0, does: 'image to text boxes; the optional engine sits behind it' },
+  { name: 'fxcost.py',    lines: 176, stmts:  49, missed:  0, does: 'what a conversion cost, and what the next will cost' },
+  { name: 'upcoming.py',  lines: 160, stmts:  45, missed:  0, does: 'subscriptions: due, landed, lapsed, and price rises' },
+  { name: 'export.py',    lines: 133, stmts:  40, missed:  0, does: 'the CSV, and whether it adds up to the ledger' },
+  { name: 'db.py',        lines: 249, stmts:  39, missed:  0, does: 'six tables, and the additive migration' },
+  { name: 'fetch.py',     lines:  52, stmts:  16, missed:  0, does: 'one way to get bytes: urllib, then curl' },
+  { name: 'paths.py',     lines:  38, stmts:   7, missed:  0, does: 'where the data lives — one decision, one place' },
+  { name: 'wsgi.py',      lines:  40, stmts:   5, missed:  0, does: 'the entry point a real server uses; not the dev one' }
 ];
 
 var TESTS = [
@@ -487,7 +487,8 @@ var TESTS = [
   { file: 'test_fxrates.py',           n: 17, of: 'the ECB history and its cache' },
   { file: 'test_export.py',            n: 14, of: 'the file, and whether it reconciles' },
   { file: 'test_ocr.py',               n: 14, of: 'the engine wrapper, and life without it' },
-  { file: 'test_published_figures.py', n:  6, of: 'the numbers on this page, against the measurement' },
+  { file: 'test_published_figures.py', n: 10, of: 'the numbers on this page, against the measurement' },
+  { file: 'test_deployment.py',        n:  7, of: 'that the two host configs agree with the Dockerfile and the app' },
   { file: 'test_shared_rules.py',      n:  5, of: 'the parser in both languages, against one shared fixture' }
 ];
 
@@ -616,7 +617,15 @@ var RATE_HISTORY_DAYS = 7089;
 var TABLES = 6;
 var ROUTE_COUNT = 38;
 var ROUTE_GROUPS = 18;
-var TEST_LINES = 7365;
+var TEST_LINES = 8524;
+
+/* Which interpreter produced the statement counts above. It matters: coverage
+ * counts a `with` block or a multi-line call differently between versions, so
+ * the same unchanged file measures a different number of statements under a
+ * different Python. The guard compares only when the running one is this one,
+ * and skips with a reason otherwise -- which is why this line exists rather
+ * than the check simply failing on a CI runner. */
+var MEASURED_WITH = 'Python 3.14';
 
 /* ------------------------------------------------------------- helpers */
 
@@ -868,13 +877,18 @@ el('tableBtn').addEventListener('click', function () {
 });
 
 el('footNote').textContent =
-  'Figures measured on 9 September 2026 with pytest --cov and wc -l in the ' +
+  'Figures measured on 12 September 2026 with pytest --cov and wc -l in the ' +
   'repository, not estimated. Everything here is read from one data block, ' +
   'so the tiles, the charts and the table cannot disagree — the previous ' +
   'version had them typed into the markup and they were wrong by 411 tests. ' +
   'The app itself is not hosted anywhere: it runs on 127.0.0.1:5004 on ' +
   'your own machine and keeps nothing outside it. This page is just the ' +
   'write-up.';
+
+el('footNote').textContent += ' The statement counts were produced by ' +
+  MEASURED_WITH + ': coverage counts statements differently between versions, so the
+  figure is a property of the code and the interpreter together, and the check that
+  guards it compares only like with like.';
 
 drawTiles();
 drawModules();

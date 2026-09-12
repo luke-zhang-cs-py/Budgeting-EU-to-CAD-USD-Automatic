@@ -1,35 +1,36 @@
-"""Rewrite the measured figures in docs/index.html and README.md.
+"""Rewrite the measured figures in docs/index.html.
 
-`tests/test_published_figures.py` checks that the numbers those two files
-quote are the real ones. This is the other half of that: it measures and
-writes them, so keeping them true is one command rather than a hunt through
-a 900-line page.
+`tests/test_published_figures.py` checks that the numbers the published page
+quotes are the real ones. This is the other half of that: it measures and
+writes them, so keeping the page true is one command rather than a hunt
+through a 700-line file.
 
     python tools/refresh_figures.py
 
-Run it after adding or removing tests, or after a module changes size. It
-prints what it changed and nothing else, so a run that prints nothing means
-the published figures were already right.
+It runs the suite under coverage, because `missed` cannot be known without a
+real run, then rewrites the module and test blocks. It prints what it
+changed; a run that prints only the totals means the page was already right.
 
-The numbers come from the same places the guard reads them: `coverage`'s own
-analysis with this project's .coveragerc for the statement counts, `wc -l`
-for file length, and a `--collect-only` run for the test counts. Nothing here
-estimates anything.
+Two things it will not do on its own:
+
+  * invent prose. A new test file, or a new module, needs a row saying what
+    it covers — only a person knows that. It stops and says which.
+  * leave a whitespace diff. It re-pads both blocks to a column computed
+    from the longest name and checks its own output for stability before
+    writing, because a tool that reformats the file on every run is one
+    nobody runs.
 """
 import io
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGE = os.path.join(ROOT, "docs", "index.html")
 README = os.path.join(ROOT, "README.md")
-
-# A description for a test file that is not in the page's table yet. Without
-# one the script stops rather than inventing prose for it, because the column
-# says what the file covers and only a person knows that.
-UNKNOWN = None
 
 
 def read(path):
@@ -42,25 +43,39 @@ def write(path, text):
         handle.write(text)
 
 
-def measure_modules():
-    import coverage
-    config = coverage.Coverage(config_file=os.path.join(ROOT, ".coveragerc"))
-    config.load()
+def measure():
+    """Run the suite under coverage and read the JSON report.
+
+    The report rather than a static analysis: it is the same set of files the
+    terminal report prints, so the omitted build tools stay omitted and the
+    network/ package is not missed — both of which a walk of the root got
+    wrong.
+    """
+    handle, path = tempfile.mkstemp(suffix=".json")
+    os.close(handle)
+    subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--cov",
+         "--cov-report=json:" + path, "-p", "no:cacheprovider"],
+        cwd=ROOT, capture_output=True, text=True, timeout=1800)
+    report = json.loads(read(path))
+    os.remove(path)
+
     out = {}
-    for name in sorted(os.listdir(ROOT)):
-        if not name.endswith(".py"):
-            continue
-        _, statements, _, _, _ = config.analysis2(os.path.join(ROOT, name))
-        out[name] = (len(read(os.path.join(ROOT, name)).splitlines()),
-                     len(statements))
+    for name, body in report["files"].items():
+        clean = name.replace("\\", "/")
+        out[clean] = {
+            "lines": len(read(os.path.join(ROOT, name)).splitlines()),
+            "stmts": body["summary"]["num_statements"],
+            "missed": body["summary"]["missing_lines"],
+        }
     return out
 
 
-def collect_tests():
+def collect():
     done = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q",
-         "--no-header", "-p", "no:cacheprovider"],
-        cwd=ROOT, capture_output=True, text=True, timeout=600)
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-header",
+         "-p", "no:cacheprovider"],
+        cwd=ROOT, capture_output=True, text=True, timeout=900)
     counts = {}
     for line in done.stdout.splitlines():
         if "::" in line:
@@ -72,129 +87,146 @@ def collect_tests():
 
 
 def fix_modules(page, measured, changes):
-    # Padded to a column computed from the longest name, not by re-emitting
-    # whatever whitespace was there. Carrying the old padding forward and
-    # adding a space to it meant every run of this script widened the table
-    # by one column and left a 23-line whitespace diff behind.
+    block = re.search(r"var MODULES = \[\n(.*?)\n\];", page, re.S)
+    rows = re.findall(
+        r"\{ name: '([\w./]+)',\s*lines:\s*(\d+),\s*stmts:\s*(\d+),"
+        r"\s*missed:\s*(\d+), does: '(.*?)' \}", block.group(1))
+    does = {name: text for name, _, _, _, text in rows}
+    was = {name: (int(a), int(b), int(c)) for name, a, b, c, _ in rows}
+
+    missing = sorted(set(measured) - set(does))
+    if missing:
+        raise SystemExit(
+            "no description on the page for %s.\nAdd a row for it in the "
+            "MODULES block first, saying what it does; this script will fix "
+            "the figures." % ", ".join(missing))
+    for name in sorted(set(does) - set(measured)):
+        changes.append("%s is on the page but coverage no longer reports it "
+                       "-- remove it, or check whether it became omitted"
+                       % name)
+
+    order = sorted(measured.items(), key=lambda kv: -kv[1]["stmts"])
     column = max(len(name) for name in measured) + 3
-
-    def one(match):
-        name = match.group("name")
-        if name not in measured:
-            changes.append("%s is on the page but no longer in the project"
-                           % name)
-            return match.group(0)
-        lines, stmts = measured[name]
-        was = (int(match.group("lines")), int(match.group("stmts")))
-        if was != (lines, stmts):
-            changes.append("%-14s %s -> %s" % (name, was, (lines, stmts)))
-        return ("{ name: %s lines: %s, stmts: %s, missed: 0,"
-                % (("'%s'," % name).ljust(column), str(lines).rjust(3),
-                   str(stmts).rjust(3)))
-
-    page = re.sub(
-        r"\{ name: '(?P<name>[\w.]+)',\s*lines:\s*(?P<lines>\d+),"
-        r"\s*stmts:\s*(?P<stmts>\d+), missed: 0,", one, page)
-
-    listed = set(re.findall(r"\{ name: '([\w.]+)',", page))
-    for name in sorted(set(measured) - listed):
-        changes.append("%s is a module the page does not list -- add a row "
-                       "for it by hand, with what it does" % name)
-    return page
+    lines = []
+    for index, (name, body) in enumerate(order):
+        now = (body["lines"], body["stmts"], body["missed"])
+        if was.get(name) != now:
+            changes.append("%-24s %s -> %s" % (name, was.get(name, "new"), now))
+        lines.append(
+            "  { name: %s lines: %s, stmts: %s, missed: %s, does: '%s' }%s"
+            % (("'%s'," % name).ljust(column), str(body["lines"]).rjust(3),
+               str(body["stmts"]).rjust(3), str(body["missed"]).rjust(2),
+               does[name], "," if index < len(order) - 1 else ""))
+    return page[:block.start(1)] + "\n".join(lines) + page[block.end(1):]
 
 
 def fix_tests(page, counts, changes):
     block = re.search(r"var TESTS = \[\n(.*?)\n\];", page, re.S)
-    # `n:\s*` rather than `n: ` -- the counts are right-justified, so a
-    # single-digit one carries an extra space and a stricter pattern silently
-    # read those rows as missing.
-    prose = dict(re.findall(r"\{ file: '([\w.]+)',\s*n:\s*\d+, of: '(.*?)' \}",
-                            block.group(1)))
-    was = dict((name, int(n)) for name, n in re.findall(
-        r"\{ file: '([\w.]+)',\s*n:\s*(\d+),", block.group(1)))
+    rows = re.findall(r"\{ file: '([\w.]+)',\s*n:\s*(\d+), of: '(.*?)' \}",
+                      block.group(1))
+    of = {name: text for name, _, text in rows}
+    was = {name: int(n) for name, n, _ in rows}
 
-    missing = sorted(set(counts) - set(prose))
+    missing = sorted(set(counts) - set(of))
     if missing:
         raise SystemExit(
             "no description on the page for %s.\nAdd a row for it in the "
             "TESTS block first, saying what it covers; this script will fix "
             "the count." % ", ".join(missing))
+    for name in sorted(set(of) - set(counts)):
+        changes.append("%s is on the page but collects nothing" % name)
 
-    for name in sorted(set(prose) - set(counts)):
-        changes.append("%s is on the page but collects nothing -- dropping it"
-                       % name)
-    for name, count in sorted(counts.items()):
+    order = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    column = max(len(name) for name in counts) + 3
+    lines = []
+    for index, (name, count) in enumerate(order):
         if was.get(name) != count:
-            changes.append("%-26s %s -> %s" % (name, was.get(name, "new"),
+            changes.append("%-28s %s -> %s" % (name, was.get(name, "new"),
                                                count))
-
-    rows = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
-    width = max(len(name) for name in counts) + 3
-    lines = ["  { file: %s n: %s, of: '%s' }%s"
-             % (("'%s'," % name).ljust(width), str(n).rjust(2), prose[name],
-                "," if index < len(rows) - 1 else "")
-             for index, (name, n) in enumerate(rows)]
+        lines.append("  { file: %s n: %s, of: '%s' }%s"
+                     % (("'%s'," % name).ljust(column), str(count).rjust(2),
+                        of[name], "," if index < len(order) - 1 else ""))
     return page[:block.start(1)] + "\n".join(lines) + page[block.end(1):]
 
 
-def fix_route_count(page, changes):
-    source = read(os.path.join(ROOT, "app.py"))
-    routes = source.count("@app.route")
-    groups = len(re.findall(r"^def _\w+\(app, ctx\):", source, re.MULTILINE))
-    for name, value in (("ROUTE_COUNT", routes), ("ROUTE_GROUPS", groups)):
-        found = re.search(r"var %s = (\d+);" % name, page)
-        if int(found.group(1)) != value:
-            changes.append("%s %s -> %s" % (name, found.group(1), value))
-        page = re.sub(r"var %s = \d+;" % name, "var %s = %d;" % (name, value),
-                      page)
-    return page
-
-
-def fix_readme(counts, measured, changes):
-    readme = read(README)
-    tests = sum(counts.values())
-    statements = sum(stmts for _, stmts in measured.values())
-    wanted = "%s tests, 100%% of %s statements" % (f"{tests:,}",
-                                                   f"{statements:,}")
-    found = re.search(r"[\d,]+ tests, 100% of [\d,]+ statements", readme)
+def fix_measured_with(page, changes):
+    """Record the interpreter, because a statement count is a property of a
+    file *and* an interpreter -- 3.14 and 3.12 disagree about several of the
+    modules in this family."""
+    version = "%d.%d" % sys.version_info[:2]
+    found = re.search(r"var MEASURED_WITH = 'Python ([\d.]+)';", page)
     if not found:
-        raise SystemExit("the README no longer states its counts in the form "
-                         "this script writes")
+        raise SystemExit(
+            "the page has no MEASURED_WITH line, so nothing records which "
+            "Python produced its figures. Add one to the data block.")
+    if found.group(1) != version:
+        changes.append("MEASURED_WITH Python %s -> %s"
+                       % (found.group(1), version))
+    return re.sub(r"var MEASURED_WITH = 'Python [\d.]+';",
+                  "var MEASURED_WITH = 'Python %s';" % version, page)
+
+
+def fix_test_lines(page, changes):
+    total = 0
+    for here, dirs, names in os.walk(os.path.join(ROOT, "tests")):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in names:
+            if name.endswith(".py"):
+                total += len(read(os.path.join(here, name)).splitlines())
+    found = re.search(r"var TEST_LINES = (\d+);", page)
+    if found and int(found.group(1)) != total:
+        changes.append("TEST_LINES %s -> %s" % (found.group(1), total))
+    return re.sub(r"var TEST_LINES = \d+;",
+                  "var TEST_LINES = %d;" % total, page)
+
+
+def fix_readme(measured, counts, changes):
+    """The one sentence of figures in the README, if it has one."""
+    if not os.path.exists(README):
+        return
+    readme = read(README)
+    stmts = sum(body["stmts"] for body in measured.values())
+    missed = sum(body["missed"] for body in measured.values())
+    percent = round(100 * (stmts - missed) / stmts)
+    wanted = "%s tests, %d%% of %s statements" % (
+        format(sum(counts.values()), ","), percent, format(stmts, ","))
+    found = re.search(r"[\d,]+ tests, \d+% of [\d,]+ statements", readme)
+    if not found:
+        return                     # this README does not state them that way
     if found.group(0) != wanted:
         changes.append("README  %s -> %s" % (found.group(0), wanted))
         write(README, readme.replace(found.group(0), wanted))
 
 
 def rewrite(page, measured, counts, changes):
-    return fix_route_count(
+    return fix_measured_with(fix_test_lines(
         fix_tests(fix_modules(page, measured, changes), counts, changes),
-        changes)
+        changes), changes)
 
 
 def main():
-    measured, counts, changes = measure_modules(), collect_tests(), []
+    measured, counts, changes = measure(), collect(), []
     page = read(PAGE)
     fixed = rewrite(page, measured, counts, changes)
 
-    # Running this twice must be the same as running it once. It was not: the
-    # module table gained a column of whitespace on every run, which is the
-    # kind of diff that makes a tool nobody trusts to run.
     again = rewrite(fixed, measured, counts, [])
     if again != fixed:
         raise SystemExit(
             "this script is not idempotent -- a second pass over its own "
-            "output changed it again, so it would leave a whitespace diff "
-            "behind on every run. Fix that before trusting what it wrote.")
+            "output changed it again, so it would leave a diff behind on "
+            "every run. Fix that before trusting what it wrote.")
 
     if fixed != page:
         write(PAGE, fixed)
-    fix_readme(counts, measured, changes)
+    fix_readme(measured, counts, changes)
 
     for line in changes:
         print("  " + line)
-    print("  %d tests, %d statements"
-          % (sum(counts.values()),
-             sum(stmts for _, stmts in measured.values())))
+    stmts = sum(body["stmts"] for body in measured.values())
+    missed = sum(body["missed"] for body in measured.values())
+    print("  %d tests, %d statements, %d%% covered"
+          % (sum(counts.values()), stmts,
+             round(100 * (stmts - missed) / stmts)))
 
 
 if __name__ == "__main__":
